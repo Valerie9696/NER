@@ -76,7 +76,7 @@ class Dataloader:
 class LSTMPrepper:
     def __init__(self):
         self.dl = Dataloader(train_path='train.json', test_path='test.json')
-        self.train_padded = self.pad(train=self.dl.train_sentences, test=self.dl.test_sentences)
+        self.train_padded, self.test_padded = self.pad(train=self.dl.train_sentences, test=self.dl.test_sentences)
 
     def find_max_sublist(self, data):
         max_list = max(data, key=len)
@@ -87,10 +87,18 @@ class LSTMPrepper:
         train_max = self.find_max_sublist(train)
         test_max = self.find_max_sublist(test)
         pad_len = max(train_max, test_max)
-        words = set(self.dl.get_unique_words(train) + self.dl.get_unique_words(test))
+        words = set(list(self.dl.get_unique_words(train)) + list(self.dl.get_unique_words(test)))
+        tags = self.dl.unique_tags
         w_index = {w: i for i, w in enumerate(words)}
-        #t_index = {t: j for j, t in enumerate(tags)}
-        #X = [[w_index[w[0]] for w in s] for s in sentences]
-        train_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=train)
-        return (train_padded)
+        t_index = {t: j for j, t in enumerate(tags)}
+        x_train = [[w_index[w] for w in s] for s in self.dl.train_sentences]
+        x_test = [[w_index[w] for w in s] for s in self.dl.test_sentences]
 
+        y_train = [[t_index[w] for w in t] for t in self.dl.train_tags]
+        test_tags_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=y_train)
+
+        train_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=x_train)
+        test_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=x_test)
+        return train_padded, test_padded
+
+lstm_prep = LSTMPrepper()
