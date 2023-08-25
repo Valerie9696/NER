@@ -61,7 +61,7 @@ class Dataloader:
         unique_tags = self.get_unique_words(self.train_tags)
         table = dict(zip(range(0, len(unique_tags) + 1), unique_tags))
         return table
-
+    #vocab has only 3148 words, but index 3204 is tried to be looked up
     def get_vocabulary(self):
         train_vocab = self.get_unique_words(self.train_sentences)
         test_vocab = self.get_unique_words(self.test_sentences)
@@ -76,7 +76,9 @@ class Dataloader:
 class LSTMPrepper:
     def __init__(self):
         self.dl = Dataloader(train_path='train.json', test_path='test.json')
-        self.x_train_padded, self.x_test_padded, self.y_train_padded, self.y_test_padded = self.pad(train=self.dl.train_sentences, test=self.dl.test_sentences)
+        self.x_train_padded, self.x_test_padded, self.y_train_padded, self.y_test_padded, self.max_len = self.pad(train=self.dl.train_sentences, test=self.dl.test_sentences)
+        self.y_train = keras.utils.to_categorical(self.y_train_padded)
+        self.y_test = keras.utils.to_categorical(self.y_test_padded)
 
     def find_max_sublist(self, data):
         max_list = max(data, key=len)
@@ -101,6 +103,6 @@ class LSTMPrepper:
 
         x_train_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=x_train)
         x_test_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=x_test)
-        return x_train_padded, x_test_padded, y_train_padded, y_test_padded
+        return x_train_padded, x_test_padded, y_train_padded, y_test_padded, pad_len
 
 lstm_prep = LSTMPrepper()

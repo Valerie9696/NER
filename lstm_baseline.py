@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import tensorflow as tf
 import keras
@@ -11,14 +13,16 @@ import preproccessing as prep
 
 class LSTM_Base:
     def __init__(self):
-        self.data = prep.Dataloader()
+        self.data = prep.Dataloader(train_path='train.json', test_path='test.json')
         self.prepper = prep.LSTMPrepper()
-        self.input = Input(shape=(104))
         self.model = self.make_model()
         self.train()
 
     def make_model(self):
-        model = Embedding(input_dim=len(self.data.vocabulary),output_dim=104,input_length=140)(input)
+        max_len = self.prepper.max_len
+        input = Input(shape=(max_len))
+        #print(len(self.data.vocabulary))
+        model = Embedding(input_dim=len(self.data.vocabulary),output_dim=max_len,input_length=140)(input)
         model = SpatialDropout1D(0.1)(model)
         model=Bidirectional(LSTM(units=150,return_sequences=True, recurrent_dropout=0.1))(model)
         output = TimeDistributed(Dense(units=len(self.data.unique_tags), activation="softmax"))(model)
@@ -28,9 +32,10 @@ class LSTM_Base:
         return model
 
     def train(self):
-        early_stop = EarlyStopping(monitor='val_accuracy', patience=1, verbose=0, mode='max',
-                                   restore_best_weights=False)
+        early_stop = EarlyStopping(monitor='val_accuracy', patience=1, verbose=0, mode='max',restore_best_weights=False)
         callbacks = [PlotLossesCallback(), early_stop]
-        history=self.model.fit(self.prepper.x_train_padded,np.array(self.prepper.y_train_padded),validation_split=0.2,batch_size=32,epochs=2,verbose=1,callbacks=callbacks)
-        self.model.evaluate(self.prepper.x_test_padded,np.array(self.prepper.y_test_padded))
-        self.model.save_weights('final_model.h5')
+        history=self.model.fit(self.prepper.x_train_padded,np.array(self.prepper.y_train),validation_split=0.2,batch_size=32,epochs=2,verbose=1,callbacks=callbacks)
+        self.model.evaluate(self.prepper.x_test_padded,np.array(self.prepper.y_test))
+        self.model.save_weights(os.path.join('models','lstm_base.h5'))
+#indices[30,19] = 3204 is not in [0, 3148)
+lstm_base = LSTM_Base()
