@@ -15,6 +15,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 import numpy as np
 import matplotlib.pyplot as plt
 
+import lstm_baseline
 import preproccessing as prep
 import lstm_baseline as lb
 
@@ -68,10 +69,10 @@ def lstm1_model_builder(tuner):
 
 
 if __name__ == '__main__':
-    tuner = kt.Hyperband(lstm_builder, objective=kt.Objective("get_f1", direction="max"), max_epochs=EPOCHS, factor=3, distribution_strategy=tf.distribute.MirroredStrategy(),
+    tuner = kt.Hyperband(lstm_builder, objective=kt.Objective(lstm_baseline.get_f1, direction="max"), max_epochs=EPOCHS, factor=3, distribution_strategy=tf.distribute.MirroredStrategy(),
                          seed=42, directory='./',
                          project_name='my_lstm_tuner')
-    earlyStopper = EarlyStopping(monitor="get_f1", patience=EARLY_STOPPING_PATIENCE,
+    earlyStopper = EarlyStopping(monitor=lstm_baseline.get_f1, patience=EARLY_STOPPING_PATIENCE,
                                  restore_best_weights=True)
     tuner.search(PREPPER.x_train_padded, PREPPER.y_train_padded, validation_data=(PREPPER.x_test_padded, PREPPER.y_test_padded), batch_size=BATCH_SIZE,
                  callbacks=[earlyStopper], epochs=EPOCHS)
