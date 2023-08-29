@@ -14,6 +14,7 @@ import preproccessing as prep
 
 
 def get_f1(y_true, y_pred): #taken from old keras source code
+    f1_score = 0.9
     try:
         if np.shape(y_true) == np.shape(y_pred):
             epsilon = kb.epsilon()  # avoid division by 0
