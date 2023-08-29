@@ -1,5 +1,6 @@
 import json
-from keras.preprocessing.sequence import pad_sequences
+#from keras.preprocessing.sequence import pad_sequences
+from keras.utils import pad_sequences
 from keras.utils import to_categorical
 import keras
 import numpy as np
