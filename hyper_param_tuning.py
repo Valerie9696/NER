@@ -16,8 +16,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import preproccessing as prep
+import lstm_baseline as lb
 
-NUM_CLASSES = 2
 EPOCHS = 15
 BATCH_SIZE = 64
 EARLY_STOPPING_PATIENCE = 5 #if the accuracy does not increase after this many epochs -> break and continue with next
@@ -39,6 +39,7 @@ def lstm_builder(tuner):
     lr = tuner.Choice("learning_rate", values=[1e-2, 1e-3, 1e-4])
     opt = tf.keras.optimizers.Adam(learning_rate=lr)
     model.compile(optimizer=opt, loss='sparse_categorical_crossentropy', metrics=['accuracy'])  #before categorical crossentropy
+    # to do check accuracies
     return model
 
 
@@ -60,17 +61,17 @@ def lstm1_model_builder(tuner):
     # Compile the model
     model.compile(optimizer=opt,
                   loss="sparse_categorical_crossentropy",
-                  metrics=[
-                      "sparse_categorical_accuracy"])  # optimizer=opt, loss="binary_crossentropy", metrics=["accuracy"])
+                  metrics=[lb.get_f1])  # optimizer=opt, loss="binary_crossentropy", metrics=["accuracy"])
 
     # Return the model
     return model
 
+
 if __name__ == '__main__':
-    tuner = kt.Hyperband(lstm_builder, objective="sparse_categorical_accuracy", max_epochs=EPOCHS, factor=3,
+    tuner = kt.Hyperband(lstm_builder, objective=kt.Objective("get_f1", direction="max"), max_epochs=EPOCHS, factor=3,
                          seed=42, directory='./',
                          project_name='my_lstm_tuner')
-    earlyStopper = EarlyStopping(monitor="sparse_categorical_accuracy", patience=EARLY_STOPPING_PATIENCE,
+    earlyStopper = EarlyStopping(monitor="get_f1", patience=EARLY_STOPPING_PATIENCE,
                                  restore_best_weights=True)
     tuner.search(PREPPER.x_train_padded, PREPPER.y_train_padded, validation_data=(PREPPER.x_test_padded, PREPPER.y_test_padded), batch_size=BATCH_SIZE,
                  callbacks=[earlyStopper], epochs=EPOCHS)
