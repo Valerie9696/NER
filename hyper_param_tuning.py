@@ -23,9 +23,9 @@ EPOCHS = 15
 BATCH_SIZE = 64
 EARLY_STOPPING_PATIENCE = 5 #if the accuracy does not increase after this many epochs -> break and continue with next
 BN_AXIS= -1 #axis=-1 implies channel last ordering[rows][cols][channels].
-NUM_CLASSES = 2 # leak or no leak
-DATA = prep.Dataloader(train_path='train.json', test_path='test.json')
-PREPPER = prep.LSTMPrepper()
+LSTM_BASE = lb.LSTM_Base(run_training=False)
+DATA = LSTM_BASE.data
+PREPPER = LSTM_BASE.prepper
 INP_SHAPE = PREPPER.max_len
 
 
@@ -39,42 +39,18 @@ def lstm_builder(tuner):
     #model.summary()
     lr = tuner.Choice("learning_rate", values=[1e-2, 1e-3, 1e-4])
     opt = tf.keras.optimizers.Adam(learning_rate=lr)
-    model.compile(optimizer=opt, loss='sparse_categorical_crossentropy', metrics=['accuracy'])  #before categorical crossentropy
+    model.compile(optimizer=opt, loss='categorical_crossentropy', metrics=[lb.get_f1])  #before categorical crossentropy
     # to do check accuracies
     return model
 
 
-def lstm1_model_builder(tuner):
-    model = keras.Sequential()
-    model.add(keras.layers.Input(INP_SHAPE))
-    forward_layer = LSTM(tuner.Int("lstm_f_1", min_value=32, max_value=176, step=16),
-                         recurrent_dropout=tuner.Float("drop_f_1", min_value=0.2, max_value=0.3, step=0.05),
-                         return_sequences=True)
-    backward_layer = LSTM(tuner.Int("lstm_b_1", min_value=16, max_value=128, step=16),
-                          recurrent_dropout=tuner.Float("drop_b_1", min_value=0.2, max_value=0.3, step=0.05),
-                          return_sequences=True, go_backwards=True)
-    model.add(keras.layers.Bidirectional(forward_layer, backward_layer=backward_layer))
-    model.add(keras.layers.GlobalAveragePooling1D())
-    model.add(keras.layers.Dense(NUM_CLASSES, activation="softmax"))
-    lr = 0.0001#tuner.Choice("learning_rate", values=[1e-3, 1e-4])
-    # model.add()
-    opt = tf.keras.optimizers.Adam(learning_rate=lr)
-    # Compile the model
-    model.compile(optimizer=opt,
-                  loss="sparse_categorical_crossentropy",
-                  metrics=[lb.get_f1])  # optimizer=opt, loss="binary_crossentropy", metrics=["accuracy"])
-
-    # Return the model
-    return model
-
-
 if __name__ == '__main__':
-    tuner = kt.Hyperband(lstm_builder, objective=kt.Objective(lstm_baseline.get_f1, direction="max"), max_epochs=EPOCHS, factor=3, distribution_strategy=tf.distribute.MirroredStrategy(),
+    tuner = kt.Hyperband(lstm_builder, objective=kt.Objective('get_f1', direction="max"), max_epochs=EPOCHS, factor=3, distribution_strategy=tf.distribute.MirroredStrategy(),
                          seed=42, directory='./',
                          project_name='my_lstm_tuner')
-    earlyStopper = EarlyStopping(monitor="get_f1", patience=EARLY_STOPPING_PATIENCE,
+    earlyStopper = EarlyStopping(monitor='get_f1', patience=EARLY_STOPPING_PATIENCE,
                                  restore_best_weights=True)
-    tuner.search(PREPPER.x_train_padded, PREPPER.y_train_padded, validation_data=(PREPPER.x_test_padded, PREPPER.y_test_padded), batch_size=BATCH_SIZE,
+    tuner.search(PREPPER.x_train_padded, np.array(PREPPER.y_train), validation_data=(PREPPER.x_test_padded, np.array(PREPPER.y_test)), batch_size=BATCH_SIZE,
                  callbacks=[earlyStopper], epochs=EPOCHS)
     best_hps = tuner.get_best_hyperparameters(num_trials=1)
     # save the best parameters

@@ -17,6 +17,7 @@ def get_f1(y_true, y_pred): #taken from old keras source code
     f1_score = 0.9
     try:
         if np.shape(y_true) == np.shape(y_pred):
+            print(np.shape(y_true), np.shape(y_pred))
             epsilon = kb.epsilon()  # avoid division by 0
             tp_clipped = kb.clip(y_true * y_pred, 0, 1)
             tp_rounded = kb.round(tp_clipped)
@@ -27,6 +28,7 @@ def get_f1(y_true, y_pred): #taken from old keras source code
             recall = true_positives / (possible_positives + epsilon)
             f1_score = 2*(precision*recall)/(precision+recall+epsilon)
         else:
+            print(np.shape(y_true), np.shape(y_pred))
             f1_score = 0.8
     except:
         f1_score = 0.5
@@ -35,11 +37,12 @@ def get_f1(y_true, y_pred): #taken from old keras source code
     return f1_score
 
 class LSTM_Base:
-    def __init__(self):
+    def __init__(self, run_training=None):
         self.data = prep.Dataloader(train_path='train.json', test_path='test.json')
         self.prepper = prep.LSTMPrepper()
         self.model = self.make_model()
-        self.train()
+        if run_training == True:
+            self.train()
 
     def make_model(self):
         max_len = self.prepper.max_len
@@ -56,7 +59,7 @@ class LSTM_Base:
     def train(self):
         early_stop = EarlyStopping(monitor='get_f1', patience=1, verbose=0, mode='max', restore_best_weights=False)   #monitor='val_accuracy'
         callbacks = [early_stop]    #PlotLossesCallback() for plotting
-        history=self.model.fit(self.prepper.x_train_padded,np.array(self.prepper.y_train),validation_split=0.2,batch_size=32,epochs=100,verbose=1,callbacks=callbacks)
+        history=self.model.fit(self.prepper.x_train_padded, np.array(self.prepper.y_train), validation_split=0.2, batch_size=32, epochs=100,verbose=1,callbacks=callbacks)
         self.model.evaluate(self.prepper.x_test_padded, np.array(self.prepper.y_test))
         self.model.save_weights(os.path.join('models', 'lstm_base.h5'))
-lstm_base = LSTM_Base()
+#lstm_base = LSTM_Base()
