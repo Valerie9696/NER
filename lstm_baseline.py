@@ -8,7 +8,7 @@ from keras import Model, Input
 from keras.layers import LSTM, Embedding, Dense
 from keras.layers import TimeDistributed, SpatialDropout1D, Bidirectional
 from keras.callbacks import ModelCheckpoint, EarlyStopping
-from livelossplot.tf_keras import PlotLossesCallback
+#from livelossplot.tf_keras import PlotLossesCallback
 
 import preproccessing as prep
 
@@ -49,7 +49,7 @@ class LSTM_Base:
 
     def train(self):
         early_stop = EarlyStopping(monitor='get_f1', patience=1, verbose=0, mode='max', restore_best_weights=False)   #monitor='val_accuracy'
-        callbacks = [PlotLossesCallback(), early_stop]
+        callbacks = [early_stop]    #PlotLossesCallback() for plotting
         history=self.model.fit(self.prepper.x_train_padded,np.array(self.prepper.y_train),validation_split=0.2,batch_size=32,epochs=100,verbose=1,callbacks=callbacks)
         self.model.evaluate(self.prepper.x_test_padded, np.array(self.prepper.y_test))
         self.model.save_weights(os.path.join('models', 'lstm_base.h5'))
