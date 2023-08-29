@@ -46,7 +46,7 @@ def lstm_builder(tuner):
 
 if __name__ == '__main__':
     tuner = kt.Hyperband(lstm_builder, objective=kt.Objective('get_f1', direction="max"), max_epochs=EPOCHS, factor=3, distribution_strategy=tf.distribute.MirroredStrategy(),
-                         seed=42, directory='./',
+                         seed=42, directory='./', overwrite=True,
                          project_name='my_lstm_tuner')
     earlyStopper = EarlyStopping(monitor='get_f1', patience=EARLY_STOPPING_PATIENCE,
                                  restore_best_weights=True)
