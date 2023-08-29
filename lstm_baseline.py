@@ -16,7 +16,9 @@ import preproccessing as prep
 def get_f1(y_true, y_pred): #taken from old keras source code
     try:
         epsilon = kb.epsilon()  # avoid division by 0
-        true_positives = kb.sum(kb.round(kb.clip(y_true * y_pred, 0, 1)))
+        tp_clipped = kb.clip(y_true * y_pred, 0, 1)
+        tp_rounded = kb.round(tp_clipped)
+        true_positives = kb.sum(tp_rounded)
         possible_positives = kb.sum(kb.round(kb.clip(y_true, 0, 1)))
         predicted_positives = kb.sum(kb.round(kb.clip(y_pred, 0, 1)))
         precision = true_positives / (predicted_positives + epsilon)
