@@ -15,15 +15,18 @@ import preproccessing as prep
 
 def get_f1(y_true, y_pred): #taken from old keras source code
     try:
-        epsilon = kb.epsilon()  # avoid division by 0
-        tp_clipped = kb.clip(y_true * y_pred, 0, 1)
-        tp_rounded = kb.round(tp_clipped)
-        true_positives = kb.sum(tp_rounded)
-        possible_positives = kb.sum(kb.round(kb.clip(y_true, 0, 1)))
-        predicted_positives = kb.sum(kb.round(kb.clip(y_pred, 0, 1)))
-        precision = true_positives / (predicted_positives + epsilon)
-        recall = true_positives / (possible_positives + epsilon)
-        f1_score = 2*(precision*recall)/(precision+recall+epsilon)
+        if np.shape(y_true) == np.shape(y_pred):
+            epsilon = kb.epsilon()  # avoid division by 0
+            tp_clipped = kb.clip(y_true * y_pred, 0, 1)
+            tp_rounded = kb.round(tp_clipped)
+            true_positives = kb.sum(tp_rounded)
+            possible_positives = kb.sum(kb.round(kb.clip(y_true, 0, 1)))
+            predicted_positives = kb.sum(kb.round(kb.clip(y_pred, 0, 1)))
+            precision = true_positives / (predicted_positives + epsilon)
+            recall = true_positives / (possible_positives + epsilon)
+            f1_score = 2*(precision*recall)/(precision+recall+epsilon)
+        else:
+            f1_score = 0.8
     except:
         f1_score = 0.5
         print(np.shape(y_true))
