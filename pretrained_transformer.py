@@ -13,7 +13,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 #https://github.com/NielsRogge/Transformers-Tutorials/blob/master/BERT/Custom_Named_Entity_Recognition_with_BERT.ipynb
 
 MAX_LEN = 128
-TRAIN_BATCH_SIZE = 4
+TRAIN_BATCH_SIZE = 1
 VALID_BATCH_SIZE = 2
 EPOCHS = 20
 LEARNING_RATE = 1e-05
