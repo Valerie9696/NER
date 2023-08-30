@@ -8,17 +8,19 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import BertTokenizer, BertConfig, BertForTokenClassification
 from torch import cuda
 from seqeval.metrics import classification_report
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 #https://github.com/NielsRogge/Transformers-Tutorials/blob/master/BERT/Custom_Named_Entity_Recognition_with_BERT.ipynb
 
 MAX_LEN = 128
 TRAIN_BATCH_SIZE = 4
 VALID_BATCH_SIZE = 2
-EPOCHS = 1
+EPOCHS = 20
 LEARNING_RATE = 1e-05
 MAX_GRAD_NORM = 10
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 device = 'cuda' if cuda.is_available() else 'cpu'
+print(device)
 
 train_params = {'batch_size': TRAIN_BATCH_SIZE,
                     'shuffle': True,
@@ -109,7 +111,7 @@ class Model:
         self.test_dataset = BertPrepper(sentences=self.data.test_sentences, tags=self.data.test_tags, unique_tags=self.data.unique_tags, tokenizer=tokenizer, max_len=128)
         self.train_loaded = DataLoader(self.train_dataset, **train_params)
         self.test_loaded = DataLoader(self.test_dataset, **test_params)
-        self.model = BertForTokenClassification.from_pretrained('bert-base-uncased',num_labels=len({**self.train_dataset.id2label,**self.test_dataset.id2label}), id2label={**self.train_dataset.id2label,**self.test_dataset.id2label}, label2id={**self.train_dataset.label2id,**self.test_dataset.label2id})
+        self.model = BertForTokenClassification.from_pretrained('bert-base-uncased', num_labels=len({**self.train_dataset.id2label, **self.test_dataset.id2label}), id2label={**self.train_dataset.id2label,**self.test_dataset.id2label}, label2id={**self.train_dataset.label2id,**self.test_dataset.label2id})
         self.model.to(device)
         self.optimizer = torch.optim.Adam(params=self.model.parameters(), lr=LEARNING_RATE)
         for epoch in range(EPOCHS):

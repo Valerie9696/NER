@@ -4,6 +4,7 @@ import preproccessing as prep
 import pretrained_transformer as pt
 # This is a sample Python script.
 from torch.utils.data import Dataset, DataLoader
+import tensorflow as tf
 from transformers import BertTokenizer, BertConfig, BertForTokenClassification
 
 #https://github.com/NielsRogge/Transformers-Tutorials/blob/master/BERT/Custom_Named_Entity_Recognition_with_BERT.ipynb
@@ -15,6 +16,8 @@ EPOCHS = 1
 LEARNING_RATE = 1e-05
 MAX_GRAD_NORM = 10
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+tf.test.is_built_with_cuda()
+print(tf.config.list_physical_devices('GPU'))
 
 # Press Umschalt+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
