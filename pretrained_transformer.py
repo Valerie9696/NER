@@ -152,7 +152,8 @@ class Model:
         self.model.to(device)
         self.epoch_stop = EarlyStopping(patience=5)
         self.early_stopping = EarlyStopping(patience=5)
-        self.optimizer = torch.optim.Adam(params=self.model.parameters(), lr=LEARNING_RATE)
+        #self.optimizer = torch.optim.Adam(params=self.model.parameters(), lr=LEARNING_RATE)
+        self.optimizer = torch.optim.SGD(params=self.model.parameters(), lr=LEARNING_RATE)
         for epoch in range(EPOCHS):
             print(f"Training epoch: {epoch + 1}")
             epoch_loss = self.train(epoch)
