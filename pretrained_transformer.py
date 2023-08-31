@@ -1,5 +1,5 @@
 import os
-
+import gc
 import numpy as np
 from sklearn.metrics import f1_score
 import torch
@@ -207,6 +207,9 @@ class Model:
             torch.nn.utils.clip_grad_norm_(parameters=self.model.parameters(), max_norm=MAX_NORM)
             # backward pass
             self.optimizer.zero_grad()
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             loss.backward()
             self.optimizer.step()
         final_loss = train_loss/train_step_count

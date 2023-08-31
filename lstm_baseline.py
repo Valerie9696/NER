@@ -36,6 +36,7 @@ def get_f1(y_true, y_pred): #taken from old keras source code
         print(np.shape(y_pred))
     return f1_score
 
+
 class LSTM_Base:
     def __init__(self, run_training=None):
         self.data = prep.Dataloader(train_path='train.json', test_path='test.json')
@@ -47,7 +48,10 @@ class LSTM_Base:
     def make_model(self):
         max_len = self.prepper.max_len
         input = Input(shape=(max_len))
-        model = Embedding(input_dim=3461, output_dim=max_len, input_length=140)(input)
+       # model = Embedding(input_dim=3461, output_dim=max_len, input_length=140)(input)
+        a = [self.prepper.embedding]
+        b = len(self.prepper.tokenizer.word_index) + 1
+        model = Embedding(input_dim=len(self.prepper.tokenizer.word_index) + 1, weights=[self.prepper.embedding], output_dim=max_len, input_length=140)(input)
         model = SpatialDropout1D(0.1)(model)
         model = Bidirectional(LSTM(units=150, return_sequences=True, recurrent_dropout=0.1))(model)
         output = TimeDistributed(Dense(units=len(self.data.unique_tags), activation="softmax"))(model)
@@ -62,4 +66,4 @@ class LSTM_Base:
         history=self.model.fit(self.prepper.x_train_padded, np.array(self.prepper.y_train), validation_split=0.2, batch_size=32, epochs=100,verbose=1,callbacks=callbacks)
         self.model.evaluate(self.prepper.x_test_padded, np.array(self.prepper.y_test))
         self.model.save_weights(os.path.join('models', 'lstm_base.h5'))
-#lstm_base = LSTM_Base()
+lstm_base = LSTM_Base(run_training=True)

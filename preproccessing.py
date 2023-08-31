@@ -1,5 +1,8 @@
+import os.path
+
+import gensim
 import json
-#from keras.preprocessing.sequence import pad_sequences
+from keras.preprocessing.text import Tokenizer
 from keras.utils import pad_sequences
 from keras.utils import to_categorical
 import keras
@@ -77,7 +80,8 @@ class Dataloader:
 class LSTMPrepper:
     def __init__(self):
         self.dl = Dataloader(train_path='train.json', test_path='test.json')
-        self.x_train_padded, self.x_test_padded, self.y_train_padded, self.y_test_padded, self.max_len = self.pad(train=self.dl.train_sentences, test=self.dl.test_sentences)
+        #self.x_train_padded, self.x_test_padded, self.y_train_padded, self.y_test_padded, self.max_len = self.pad(train=self.dl.train_sentences, test=self.dl.test_sentences)
+        self.tokenizer, self.embedding, self.x_train_padded, self.y_train_padded, self.x_test_padded, self.y_test_padded, self.max_len = self.tokenize()
         self.y_train = keras.utils.to_categorical(self.y_train_padded)
         self.y_test = keras.utils.to_categorical(self.y_test_padded)
 
@@ -86,6 +90,48 @@ class LSTMPrepper:
         max_len = max(map(len, data))
         return max_len
 
+    def tokenize(self):
+        sentences = list(self.dl.train_sentences) + list(self.dl.test_sentences)
+        tokenizer = Tokenizer()
+        if not os.path.exists('Embeddings'):
+            os.mkdir('Embeddings')
+        if not os.path.isfile(os.path.join('Embeddings', 'w2v.word2vec')):
+            w2v_model = gensim.models.Word2Vec(sentences=sentences, min_count=5, window=5, sg=1)
+            w2v_model.save(os.path.join('Embeddings', 'w2v.word2vec'))
+        else:
+            w2v_model = gensim.models.Word2Vec.load(os.path.join('Embeddings', 'w2v.word2vec'))
+        GLOVE_DIM = 181
+        tokenizer.fit_on_texts(sentences)
+        train_tokenized = tokenizer.texts_to_sequences(self.dl.train_sentences)
+        test_tokenized = tokenizer.texts_to_sequences(self.dl.test_sentences)
+        train_max = self.find_max_sublist(self.dl.train_sentences)
+        test_max = self.find_max_sublist(self.dl.train_sentences)
+        pad_len = max(train_max, test_max)
+        t_index = {t: j for j, t in enumerate(self.dl.unique_tags)}
+        y_train = [[t_index[w] for w in t] for t in self.dl.train_tags]
+        y_test = [[t_index[w] for w in t] for t in self.dl.test_tags]
+        y_train_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=y_train)
+        y_test_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=y_test)
+
+        x_train_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=train_tokenized)
+        x_test_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=test_tokenized)
+        word_count = len(tokenizer.word_index)
+        emb_matrix = np.zeros((word_count + 1, GLOVE_DIM))
+        word_items = tokenizer.word_index.items()
+        for w, i in word_items:
+            # The word_index contains a token for all words of the training data, so we need to limit that
+            if i < word_count:
+                try:
+                    vect = w2v_model.wv.get_vector(w)
+                    emb_matrix[i] = vect
+                except:
+                    pass
+                # Check if the word from the training data occurs in the GloVe word embeddings
+                # Otherwise the vector is kept with only zeros
+            else:
+                break
+        a=0
+        return tokenizer, emb_matrix, x_train_padded, y_train_padded, x_test_padded, y_test_padded, pad_len
     def pad(self, train, test):
         train_max = self.find_max_sublist(train)
         test_max = self.find_max_sublist(test)

@@ -54,6 +54,6 @@ if __name__ == '__main__':
                  callbacks=[earlyStopper], epochs=EPOCHS)
     best_hps = tuner.get_best_hyperparameters(num_trials=1)
     # save the best parameters
-    with open(os.path.join('Hyperparameters','lstm_params.pkl'), 'wb') as f:
+    with open(os.path.join('Hyperparameters','lstm_params.pkl'), 'wb+') as f:
         pickle.dump(best_hps, f)
         f.close()
