@@ -66,4 +66,4 @@ class LSTM_Base:
         history=self.model.fit(self.prepper.x_train_padded, np.array(self.prepper.y_train), validation_split=0.2, batch_size=32, epochs=100,verbose=1,callbacks=callbacks)
         self.model.evaluate(self.prepper.x_test_padded, np.array(self.prepper.y_test))
         self.model.save_weights(os.path.join('models', 'lstm_base.h5'))
-lstm_base = LSTM_Base(run_training=True)
+#lstm_base = LSTM_Base(run_training=True)
