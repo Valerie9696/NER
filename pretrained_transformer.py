@@ -1,7 +1,7 @@
 import os
 
 import numpy as np
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import f1_score
 import torch
 import preproccessing as prep
 from torch.utils.data import Dataset, DataLoader
@@ -12,24 +12,17 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 #https://github.com/NielsRogge/Transformers-Tutorials/blob/master/BERT/Custom_Named_Entity_Recognition_with_BERT.ipynb
 
-MAX_LEN = 128
 TRAIN_BATCH_SIZE = 1
 VALID_BATCH_SIZE = 2
 EPOCHS = 20
-LEARNING_RATE = 1e-05
-MAX_GRAD_NORM = 10
+LEARNING_RATE = 0.001#1e-05
+MAX_NORM = 10
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 device = 'cuda' if cuda.is_available() else 'cpu'
 print(device)
 
-train_params = {'batch_size': TRAIN_BATCH_SIZE,
-                    'shuffle': True,
-                    'num_workers': 0
-                    }
-test_params = {'batch_size': VALID_BATCH_SIZE,
-                    'shuffle': True,
-                    'num_workers': 0
-                    }
+train_params = {'batch_size': TRAIN_BATCH_SIZE, 'shuffle': True, 'num_workers': 3}
+test_params = {'batch_size': VALID_BATCH_SIZE, 'shuffle': True, 'num_workers': 3}
 
 class EarlyStopping(object):
     def __init__(self, mode='min', min_delta=0, patience=10):
@@ -169,70 +162,65 @@ class Model:
         self.validate()
         self.model.save_pretrained(os.path.join('models', 'bert_pretrained.mdl'))
 
+    def get_f1_score(self, targets, logits, mask, training_predictions, training_labels, full_f1):
+        flattened_targets = targets.view(-1)  # shape (batch_size * seq_len,)
+        active_logits = logits.view(-1, self.model.num_labels)  # shape (batch_size * seq_len, num_labels)
+        flattened_predictions = torch.argmax(input=active_logits, dim=1)  # prev axis = 1 shape (batch_size * seq_len,)
+        # now, use mask to determine where we should compare predictions with targets (includes [CLS] and [SEP] token predictions)
+        active_accuracy = mask.view(-1) == 1  # active accuracy is also of shape (batch_size * seq_len,)
+        targets = torch.masked_select(flattened_targets, active_accuracy)
+        predictions = torch.masked_select(flattened_predictions, active_accuracy)
+        training_predictions.extend(predictions)
+        training_labels.extend(targets)
+        cur_f1 = f1_score(targets.cpu().numpy(), predictions.cpu().numpy(), average='micro')
+        full_f1 += cur_f1
+        return full_f1
+
     def train(self, epoch):
-        tr_loss = 0
-        tr_accuracy = 0
-        nb_tr_examples = 0
-        nb_tr_steps = 0
-        tr_preds, tr_labels = [], []
+        # init variables
+        train_loss = 0
+        f1_train = 0
+        train_step_count = 0
+        training_predictions = []
+        training_labels = []
         # start training
         self.model.train()
-        for idx, batch in enumerate(self.train_loaded):
+        for i, batch in enumerate(self.train_loaded):
             ids = batch['ids'].to(device, dtype=torch.long)
             mask = batch['mask'].to(device, dtype=torch.long)
             targets = batch['targets'].to(device, dtype=torch.long)
-
-            outputs = self.model(input_ids=ids, attention_mask=mask, labels=targets)
-            loss, tr_logits = outputs.loss, outputs.logits
-            tr_loss += loss.item()
-
-            nb_tr_steps += 1
-            nb_tr_examples += targets.size(0)
-
-            if idx % 100 == 0:
-                loss_step = tr_loss / nb_tr_steps
-                print(f"Training loss per 100 training steps: {loss_step}")
+            result = self.model(input_ids=ids, attention_mask=mask, labels=targets)
+            loss = result.loss
+            logits = result.logits
+            train_loss += loss.item()
+            train_step_count += 1
+            if i % 100 == 0:
+                loss_step = train_loss/train_step_count
+                print('Training: Loss per 100 steps: ', loss_step)
                 if self.early_stopping.step(loss_step):
                     print('stop mid epoch')
                     break
-
-            # compute training accuracy
-            flattened_targets = targets.view(-1)  # shape (batch_size * seq_len,)
-            active_logits = tr_logits.view(-1, self.model.num_labels)  # shape (batch_size * seq_len, num_labels)
-            flattened_predictions = torch.argmax(input=active_logits, dim=1)  # prev axis = 1 shape (batch_size * seq_len,)
-            # now, use mask to determine where we should compare predictions with targets (includes [CLS] and [SEP] token predictions)
-            active_accuracy = mask.view(-1) == 1  # active accuracy is also of shape (batch_size * seq_len,)
-            targets = torch.masked_select(flattened_targets, active_accuracy)
-            predictions = torch.masked_select(flattened_predictions, active_accuracy)
-
-            tr_preds.extend(predictions)
-            tr_labels.extend(targets)
-
-            tmp_tr_accuracy = accuracy_score(targets.cpu().numpy(), predictions.cpu().numpy())
-            tr_accuracy += tmp_tr_accuracy
-
+            # get the f1-score
+            f1_train = self.get_f1_score(targets=targets, logits=logits, mask=mask, training_predictions=training_predictions, training_labels=training_labels, full_f1=f1_train)
             # gradient clipping
-            torch.nn.utils.clip_grad_norm_(
-                parameters=self.model.parameters(), max_norm=MAX_GRAD_NORM
-            )
-
+            torch.nn.utils.clip_grad_norm_(parameters=self.model.parameters(), max_norm=MAX_NORM)
             # backward pass
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-
-        epoch_loss = tr_loss / nb_tr_steps
-        tr_accuracy = tr_accuracy / nb_tr_steps
-        print(f"Training loss epoch: {epoch_loss}")
-        print(f"Training accuracy epoch: {tr_accuracy}")
-        return epoch_loss
+        final_loss = train_loss/train_step_count
+        print(f"loss of epoch: {final_loss}")
+        f1_train = f1_train/train_step_count
+        print(f"f1-score of epoch: {f1_train}")
+        return final_loss
 
     def validate(self):
         # put model in evaluation mode
         self.model.eval()
 
-        eval_loss, eval_accuracy = 0, 0
-        nb_eval_examples, nb_eval_steps = 0, 0
+        eval_loss = 0
+        f1_val = 0
+        nb_eval_steps = 0
         eval_preds, eval_labels = [], []
 
         with torch.no_grad():
@@ -247,40 +235,26 @@ class Model:
                 eval_loss += loss.item()
 
                 nb_eval_steps += 1
-                nb_eval_examples += targets.size(0)
-
                 if idx % 100 == 0:
                     loss_step = eval_loss / nb_eval_steps
-                    print(f"Validation loss per 100 evaluation steps: {loss_step}")
+                    print('Validation: Loss per 100 steps: ', loss_step)
 
-                # compute evaluation accuracy
-                flattened_targets = targets.view(-1)  # shape (batch_size * seq_len,)
-                active_logits = eval_logits.view(-1, self.model.num_labels)  # shape (batch_size * seq_len, num_labels)
-                flattened_predictions = torch.argmax(input=active_logits, dim=1)  # shape (batch_size * seq_len,)
-                # now, use mask to determine where we should compare predictions with targets (includes [CLS] and [SEP] token predictions)
-                active_accuracy = mask.view(-1) == 1  # active accuracy is also of shape (batch_size * seq_len,)
-                targets = torch.masked_select(flattened_targets, active_accuracy)
-                predictions = torch.masked_select(flattened_predictions, active_accuracy)
+                f1_val = self.get_f1_score(targets=targets, logits=eval_logits, mask=mask, training_predictions=eval_preds, training_labels=eval_labels, full_f1=f1_val)
 
-                eval_labels.extend(targets)
-                eval_preds.extend(predictions)
-
-                tmp_eval_accuracy = accuracy_score(targets.cpu().numpy(), predictions.cpu().numpy())
-                eval_accuracy += tmp_eval_accuracy
 
         # print(eval_labels)
         # print(eval_preds)
-        fullid2label = {**self.train_dataset.id2label,  **self.test_dataset.id2label}
-        tags = [fullid2label[id.item()] for id in eval_labels]
-        predictions = [fullid2label[id.item()] for id in eval_preds]
+        id2label_combined = {**self.train_dataset.id2label,  **self.test_dataset.id2label}
+        tags = [id2label_combined[id.item()] for id in eval_labels]
+        predictions = [id2label_combined[id.item()] for id in eval_preds]
 
         # print(labels)
         # print(predictions)
 
         eval_loss = eval_loss / nb_eval_steps
-        eval_accuracy = eval_accuracy / nb_eval_steps
+        final_f1 = f1_val / nb_eval_steps
         print(f"Validation Loss: {eval_loss}")
-        print(f"Validation Accuracy: {eval_accuracy}")
+        print(f"Validation Accuracy: {final_f1}")
 
         print(classification_report([tags], [predictions]))
 
