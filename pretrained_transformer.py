@@ -31,6 +31,50 @@ test_params = {'batch_size': VALID_BATCH_SIZE,
                     'num_workers': 0
                     }
 
+class EarlyStopping(object):
+    def __init__(self, mode='min', min_delta=0, patience=10):
+        self.mode = mode
+        self.min_delta = min_delta
+        self.patience = patience
+        self.best = None
+        self.num_bad_epochs = 0
+        self.is_better = None
+
+        if patience == 0:
+            self.is_better = True
+            self.step = lambda a: False
+
+    def step(self, loss):
+        if self.best is None:
+            self.best = loss
+            return False
+        if np.isnan(loss):
+            return True
+        #print(loss, self.best, self.num_bad_epochs)
+        #print('is_better', self.is_better(metrics, self.best))
+        change = self.check(loss, min_delta=10)
+        if change:
+            self.num_bad_epochs = 0
+            self.best = loss
+        else:
+            self.num_bad_epochs += 1
+        print('count of bad epochs', self.num_bad_epochs)
+        if self.num_bad_epochs >= self.patience:
+            print('terminating because of early stopping!')
+            return True
+        return False
+
+    def check(self, loss, min_delta):
+        print(self.best - loss, min_delta)
+        change = False
+        if (self.best - loss) > min_delta:
+            self.is_better = True
+            change = True
+        else:
+            self.is_better = False
+            change = False
+        return change
+
 
 def tokenize_and_preserve_labels(sentence=None, tags=None, tokenizer=tokenizer):
     tokenized_sentence = []
@@ -113,22 +157,27 @@ class Model:
         self.test_loaded = DataLoader(self.test_dataset, **test_params)
         self.model = BertForTokenClassification.from_pretrained('bert-base-uncased', num_labels=len({**self.train_dataset.id2label, **self.test_dataset.id2label}), id2label={**self.train_dataset.id2label,**self.test_dataset.id2label}, label2id={**self.train_dataset.label2id,**self.test_dataset.label2id})
         self.model.to(device)
+        self.epoch_stop = EarlyStopping(patience=5)
+        self.early_stopping = EarlyStopping(patience=5)
         self.optimizer = torch.optim.Adam(params=self.model.parameters(), lr=LEARNING_RATE)
         for epoch in range(EPOCHS):
             print(f"Training epoch: {epoch + 1}")
-            self.train(epoch)
+            epoch_loss = self.train(epoch)
+            if self.epoch_stop.step(epoch_loss):
+                print('tis enough')
+                break
         self.validate()
         self.model.save_pretrained(os.path.join('models', 'bert_pretrained.mdl'))
 
     def train(self, epoch):
-        tr_loss, tr_accuracy = 0, 0
-        nb_tr_examples, nb_tr_steps = 0, 0
+        tr_loss = 0
+        tr_accuracy = 0
+        nb_tr_examples = 0
+        nb_tr_steps = 0
         tr_preds, tr_labels = [], []
-        # put model in training mode
+        # start training
         self.model.train()
-
         for idx, batch in enumerate(self.train_loaded):
-
             ids = batch['ids'].to(device, dtype=torch.long)
             mask = batch['mask'].to(device, dtype=torch.long)
             targets = batch['targets'].to(device, dtype=torch.long)
@@ -143,6 +192,9 @@ class Model:
             if idx % 100 == 0:
                 loss_step = tr_loss / nb_tr_steps
                 print(f"Training loss per 100 training steps: {loss_step}")
+                if self.early_stopping.step(loss_step):
+                    print('stop mid epoch')
+                    break
 
             # compute training accuracy
             flattened_targets = targets.view(-1)  # shape (batch_size * seq_len,)
@@ -173,6 +225,7 @@ class Model:
         tr_accuracy = tr_accuracy / nb_tr_steps
         print(f"Training loss epoch: {epoch_loss}")
         print(f"Training accuracy epoch: {tr_accuracy}")
+        return epoch_loss
 
     def validate(self):
         # put model in evaluation mode
@@ -217,7 +270,7 @@ class Model:
 
         # print(eval_labels)
         # print(eval_preds)
-        fullid2label = {self.train_dataset.id2label,self.test_dataset.id2label}
+        fullid2label = {**self.train_dataset.id2label,  **self.test_dataset.id2label}
         tags = [fullid2label[id.item()] for id in eval_labels]
         predictions = [fullid2label[id.item()] for id in eval_preds]
 
