@@ -30,8 +30,9 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
         # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
+        print(torch.cuda.current_device())
         print('START: free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
-    pt.Model()
+    #pt.Model()
 
 
     #for i in range(0, len(dl.train_sentences)):
