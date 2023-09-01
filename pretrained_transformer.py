@@ -148,6 +148,7 @@ class Model:
         self.train_loaded = DataLoader(self.train_dataset, **train_params)
         self.test_loaded = DataLoader(self.test_dataset, **test_params)
         self.model = BertForTokenClassification.from_pretrained('bert-base-uncased', num_labels=len({**self.train_dataset.id2label, **self.test_dataset.id2label}), id2label={**self.train_dataset.id2label,**self.test_dataset.id2label}, label2id={**self.train_dataset.label2id,**self.test_dataset.label2id})
+        self.model.gradient_checkpointing_enable()
         self.model.to(device)
         self.epoch_stop = EarlyStopping(patience=5)
         self.early_stopping = EarlyStopping(patience=5)
@@ -211,8 +212,6 @@ class Model:
             # get the f1-score
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-                #print('allocated memory: ', torch.cuda.memory_allocated(device=device))
-                print('before_f1: free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
             f1_train = self.get_f1_score(targets=targets, logits=logits, mask=mask, training_predictions=training_predictions, training_labels=training_labels, full_f1=f1_train)
             # gradient clipping
             torch.nn.utils.clip_grad_norm_(parameters=self.model.parameters(), max_norm=MAX_NORM)
@@ -221,8 +220,6 @@ class Model:
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-                #print('allocated memory: ', torch.cuda.memory_allocated(device=device))
-                print('free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
                 print(torch.cuda.memory_summary(device=device))
             loss.backward()
             self.optimizer.step()
