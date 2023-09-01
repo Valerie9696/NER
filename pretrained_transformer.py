@@ -142,27 +142,11 @@ class BertPrepper(Dataset):
 
 class Model:
     def __init__(self):
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            print('init')
-            print(torch.cuda.memory_summary())
         self.data = prep.Dataloader(train_path='train.json', test_path='test.json')
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            print('after dataloader')
-            print(torch.cuda.memory_summary())
         self.train_dataset = BertPrepper(sentences=self.data.train_sentences, tags=self.data.train_tags, unique_tags=self.data.unique_tags, max_len=128)
         self.test_dataset = BertPrepper(sentences=self.data.test_sentences, tags=self.data.test_tags, unique_tags=self.data.unique_tags, max_len=128)
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            print('after bert prepper')
-            print(torch.cuda.memory_summary())
         self.train_loaded = DataLoader(self.train_dataset, **train_params)
         self.test_loaded = DataLoader(self.test_dataset, **test_params)
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            print('after dataloader')
-            print(torch.cuda.memory_summary())
         self.model = BertForTokenClassification.from_pretrained('bert-base-uncased', num_labels=len({**self.train_dataset.id2label, **self.test_dataset.id2label}), id2label={**self.train_dataset.id2label,**self.test_dataset.id2label}, label2id={**self.train_dataset.label2id,**self.test_dataset.label2id})
         self.model.to(device)
         self.epoch_stop = EarlyStopping(patience=5)
@@ -201,10 +185,18 @@ class Model:
         training_labels = []
         # start training
         self.model.train()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            print('training just started')
+            print(torch.cuda.memory_summary())
         for i, batch in enumerate(self.train_loaded):
             ids = batch['ids'].to(device, dtype=torch.long)
             mask = batch['mask'].to(device, dtype=torch.long)
             targets = batch['targets'].to(device, dtype=torch.long)
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                print('ids mask and targets to device')
+                print(torch.cuda.memory_summary())
             result = self.model(input_ids=ids, attention_mask=mask, labels=targets)
             loss = result.loss
             logits = result.logits
