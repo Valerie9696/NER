@@ -151,4 +151,4 @@ class LSTMPrepper:
         x_test_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=x_test)
         return x_train_padded, x_test_padded, y_train_padded, y_test_padded, pad_len
 
-lstm_prep = LSTMPrepper()
+#lstm_prep = LSTMPrepper()

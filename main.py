@@ -21,10 +21,5 @@ if __name__ == '__main__':
     #print(train_set[0])
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-        # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
-        print('device: ', torch.cuda.current_device())
-        print('START: free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
-        print(torch.cuda.max_memory_allocated())
-        print('reserved', torch.cuda.memory_reserved(torch.cuda.current_device()))
         print(torch.cuda.memory_summary())
     pt.Model()

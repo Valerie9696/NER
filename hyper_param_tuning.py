@@ -23,10 +23,6 @@ EPOCHS = 15
 BATCH_SIZE = 64
 EARLY_STOPPING_PATIENCE = 5 #if the accuracy does not increase after this many epochs -> break and continue with next
 BN_AXIS= -1 #axis=-1 implies channel last ordering[rows][cols][channels].
-LSTM_BASE = lb.LSTM_Base(run_training=False)
-DATA = LSTM_BASE.data
-PREPPER = LSTM_BASE.prepper
-INP_SHAPE = PREPPER.max_len
 
 
 def lstm_builder(tuner):
@@ -45,6 +41,10 @@ def lstm_builder(tuner):
 
 
 if __name__ == '__main__':
+    LSTM_BASE = lb.LSTM_Base(run_training=False)
+    DATA = LSTM_BASE.data
+    PREPPER = LSTM_BASE.prepper
+    INP_SHAPE = PREPPER.max_len
     tuner = kt.Hyperband(lstm_builder, objective=kt.Objective('get_f1', direction="max"), max_epochs=EPOCHS, factor=3, distribution_strategy=tf.distribute.MirroredStrategy(),
                          seed=42, directory='./', overwrite=True,
                          project_name='my_lstm_tuner')

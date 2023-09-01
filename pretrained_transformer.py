@@ -24,6 +24,7 @@ print(device)
 train_params = {'batch_size': TRAIN_BATCH_SIZE, 'shuffle': True, 'num_workers': 1}
 test_params = {'batch_size': VALID_BATCH_SIZE, 'shuffle': True, 'num_workers': 1}
 
+
 class EarlyStopping(object):
     def __init__(self, mode='min', min_delta=0, patience=10):
         self.mode = mode
@@ -143,29 +144,25 @@ class Model:
     def __init__(self):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
-            print('before train loaded: free and total memory: ',
-                  torch.cuda.mem_get_info(device=torch.cuda.current_device()))
+            print('init')
+            print(torch.cuda.memory_summary())
         self.data = prep.Dataloader(train_path='train.json', test_path='test.json')
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
-            print('before train loaded: free and total memory: ',
-                  torch.cuda.mem_get_info(device=torch.cuda.current_device()))
+            print('after dataloader')
+            print(torch.cuda.memory_summary())
         self.train_dataset = BertPrepper(sentences=self.data.train_sentences, tags=self.data.train_tags, unique_tags=self.data.unique_tags, max_len=128)
         self.test_dataset = BertPrepper(sentences=self.data.test_sentences, tags=self.data.test_tags, unique_tags=self.data.unique_tags, max_len=128)
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
-            print('before train loaded: free and total memory: ',
-                  torch.cuda.mem_get_info(device=torch.cuda.current_device()))
+            print('after bert prepper')
+            print(torch.cuda.memory_summary())
         self.train_loaded = DataLoader(self.train_dataset, **train_params)
         self.test_loaded = DataLoader(self.test_dataset, **test_params)
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
-            print('before grad_clipping: free and total memory: ',
-                  torch.cuda.mem_get_info(device=torch.cuda.current_device()))
+            print('after dataloader')
+            print(torch.cuda.memory_summary())
         self.model = BertForTokenClassification.from_pretrained('bert-base-uncased', num_labels=len({**self.train_dataset.id2label, **self.test_dataset.id2label}), id2label={**self.train_dataset.id2label,**self.test_dataset.id2label}, label2id={**self.train_dataset.label2id,**self.test_dataset.label2id})
         self.model.to(device)
         self.epoch_stop = EarlyStopping(patience=5)
