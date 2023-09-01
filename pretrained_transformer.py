@@ -18,9 +18,9 @@ EPOCHS = 20
 LEARNING_RATE = 0.001#1e-05
 MAX_NORM = 10
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-device = 'cuda' if cuda.is_available() else 'cpu'
-print(device)
+#device = 'cuda' if cuda.is_available() else 'cpu'
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print(device)
 
 train_params = {'batch_size': TRAIN_BATCH_SIZE, 'shuffle': True, 'num_workers': 3}
 test_params = {'batch_size': VALID_BATCH_SIZE, 'shuffle': True, 'num_workers': 3}
