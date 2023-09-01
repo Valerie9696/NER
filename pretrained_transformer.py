@@ -211,7 +211,9 @@ class Model:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             loss.backward()
+            print('after loss')
             self.optimizer.step()
+            print('after step')
         final_loss = train_loss/train_step_count
         print(f"loss of epoch: {final_loss}")
         f1_train = f1_train/train_step_count
