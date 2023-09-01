@@ -210,6 +210,8 @@ class Model:
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+                print('allocated memory: ', torch.cuda.memory_allocated(device=device))
+                print(torch.cuda.memory_summary(device=device))
             loss.backward()
             print('after loss')
             self.optimizer.step()
