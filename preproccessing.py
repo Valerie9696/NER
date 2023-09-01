@@ -58,7 +58,6 @@ class Dataloader:
                     tuples.append(tuple(zip(sentence['words'], tagged)))
             abstracts = abstracts + sentences
             all_tags = all_tags + tags
-        print(counter)
         return abstracts, all_tags
 
     def make_lookup(self):

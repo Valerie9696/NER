@@ -24,12 +24,5 @@ if __name__ == '__main__':
         # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
         print(torch.cuda.current_device())
         print('START: free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
+        print(torch.cuda.max_memory_allocated())
     pt.Model()
-
-
-    #for i in range(0, len(dl.train_sentences)):
-     #   pt.tokenize_and_preserve_labels(sentence=dl.train_sentences[i], text_labels=dl.train_tags[i])
-    #padded = prep.pad(train, test)
-    a=0
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/

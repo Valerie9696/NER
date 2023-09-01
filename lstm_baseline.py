@@ -17,7 +17,6 @@ def get_f1(y_true, y_pred): #taken from old keras source code
     f1_score = 0.9
     try:
         if np.shape(y_true) == np.shape(y_pred):
-            print(np.shape(y_true), np.shape(y_pred))
             epsilon = kb.epsilon()  # avoid division by 0
             tp_clipped = kb.clip(y_true * y_pred, 0, 1)
             tp_rounded = kb.round(tp_clipped)
@@ -28,7 +27,7 @@ def get_f1(y_true, y_pred): #taken from old keras source code
             recall = true_positives / (possible_positives + epsilon)
             f1_score = 2*(precision*recall)/(precision+recall+epsilon)
         else:
-            print(np.shape(y_true), np.shape(y_pred))
+            #print(np.shape(y_true), np.shape(y_pred))
             f1_score = 0.8
     except:
         f1_score = 0.5

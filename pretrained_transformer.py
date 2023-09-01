@@ -58,7 +58,6 @@ class EarlyStopping(object):
         return False
 
     def check(self, loss, min_delta):
-        print(self.best - loss, min_delta)
         change = False
         if (self.best - loss) > min_delta:
             self.is_better = True
@@ -270,17 +269,9 @@ class Model:
                     print('Validation: Loss per 100 steps: ', loss_step)
 
                 f1_val = self.get_f1_score(targets=targets, logits=eval_logits, mask=mask, training_predictions=eval_preds, training_labels=eval_labels, full_f1=f1_val)
-
-
-        # print(eval_labels)
-        # print(eval_preds)
         id2label_combined = {**self.train_dataset.id2label,  **self.test_dataset.id2label}
         tags = [id2label_combined[id.item()] for id in eval_labels]
         predictions = [id2label_combined[id.item()] for id in eval_preds]
-
-        # print(labels)
-        # print(predictions)
-
         eval_loss = eval_loss / nb_eval_steps
         final_f1 = f1_val / nb_eval_steps
         print(f"Validation Loss: {eval_loss}")
