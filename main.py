@@ -11,14 +11,6 @@ from transformers import BertTokenizer, BertConfig, BertForTokenClassification
 #https://github.com/NielsRogge/Transformers-Tutorials/blob/master/BERT/Custom_Named_Entity_Recognition_with_BERT.ipynb
 
 
-# Press Umschalt+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-
-
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Strg+F8 to toggle the breakpoint.
-
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
@@ -32,7 +24,7 @@ if __name__ == '__main__':
         # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
         print(torch.cuda.current_device())
         print('START: free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
-    #pt.Model()
+    pt.Model()
 
 
     #for i in range(0, len(dl.train_sentences)):

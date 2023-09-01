@@ -17,12 +17,12 @@ VALID_BATCH_SIZE = 2
 EPOCHS = 20
 LEARNING_RATE = 0.001#1e-05
 MAX_NORM = 10
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+#tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 device = 'cuda' if cuda.is_available() else 'cpu'
 print(device)
 
-train_params = {'batch_size': TRAIN_BATCH_SIZE, 'shuffle': True, 'num_workers': 3}
-test_params = {'batch_size': VALID_BATCH_SIZE, 'shuffle': True, 'num_workers': 3}
+train_params = {'batch_size': TRAIN_BATCH_SIZE, 'shuffle': True, 'num_workers': 1}
+test_params = {'batch_size': VALID_BATCH_SIZE, 'shuffle': True, 'num_workers': 1}
 
 class EarlyStopping(object):
     def __init__(self, mode='min', min_delta=0, patience=10):
@@ -69,29 +69,11 @@ class EarlyStopping(object):
         return change
 
 
-def tokenize_and_preserve_labels(sentence=None, tags=None, tokenizer=tokenizer):
-    tokenized_sentence = []
-    tags = []
-    #sentence = sentence.strip()
-    for word, tag in zip(sentence, tags):
-        # Tokenize the word and count # of subwords the word is broken into
-        tokenized= tokenizer.tokenize(word)
-        sub_words = len(tokenized)
-
-        # Add the tokenized word to the final tokenized word list
-        tokenized_sentence.extend(tokenized)
-
-        # Add the same label to the new list of labels `n_subwords` times
-        tags.extend([tag] * sub_words)
-
-    return tokenized_sentence, tags
-
-
 class BertPrepper(Dataset):
-    def __init__(self, sentences, tags, unique_tags, tokenizer, max_len):
+    def __init__(self, sentences, tags, unique_tags, max_len):
         self.sentences = sentences
         self.tags = tags
-        self.tokenizer = tokenizer
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
         self.max_len = max_len
         self.len = len(sentences)
         self.label2id = {k: v for v, k in enumerate(unique_tags)}
@@ -101,7 +83,7 @@ class BertPrepper(Dataset):
         # step 1: tokenize (and adapt corresponding labels)
         sentence = self.sentences[index]
         word_labels = self.tags[index]
-        tokenized_sentence, labels = tokenize_and_preserve_labels(sentence, word_labels, self.tokenizer)
+        tokenized_sentence, labels = self.tokenize_and_preserve_labels(sentence=sentence, tags=word_labels)
 
         # step 2: add special tokens (and corresponding labels)
         tokenized_sentence = ["[CLS]"] + tokenized_sentence + ["[SEP]"]  # add special tokens
@@ -137,6 +119,23 @@ class BertPrepper(Dataset):
             'targets': torch.tensor(label_ids, dtype=torch.long)
         }
 
+    def tokenize_and_preserve_labels(self, sentence=None, tags=None):
+        tokenized_sentence = []
+        tags = []
+        # sentence = sentence.strip()
+        for word, tag in zip(sentence, tags):
+            # Tokenize the word and count # of subwords the word is broken into
+            tokenized = self.tokenizer.tokenize(word)
+            sub_words = len(tokenized)
+
+            # Add the tokenized word to the final tokenized word list
+            tokenized_sentence.extend(tokenized)
+
+            # Add the same label to the new list of labels `n_subwords` times
+            tags.extend([tag] * sub_words)
+
+        return tokenized_sentence, tags
+
     def __len__(self):
         return self.len
 
@@ -154,8 +153,8 @@ class Model:
             # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
             print('before train loaded: free and total memory: ',
                   torch.cuda.mem_get_info(device=torch.cuda.current_device()))
-        self.train_dataset = BertPrepper(sentences=self.data.train_sentences, tags=self.data.train_tags, unique_tags=self.data.unique_tags, tokenizer=tokenizer, max_len=128)
-        self.test_dataset = BertPrepper(sentences=self.data.test_sentences, tags=self.data.test_tags, unique_tags=self.data.unique_tags, tokenizer=tokenizer, max_len=128)
+        self.train_dataset = BertPrepper(sentences=self.data.train_sentences, tags=self.data.train_tags, unique_tags=self.data.unique_tags, max_len=128)
+        self.test_dataset = BertPrepper(sentences=self.data.test_sentences, tags=self.data.test_tags, unique_tags=self.data.unique_tags, max_len=128)
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
@@ -173,7 +172,7 @@ class Model:
         self.epoch_stop = EarlyStopping(patience=5)
         self.early_stopping = EarlyStopping(patience=5)
         #self.optimizer = torch.optim.Adam(params=self.model.parameters(), lr=LEARNING_RATE)
-        self.optimizer = torch.optim.SGD(params=self.model.parameters(), lr=LEARNING_RATE)
+        self.optimizer = torch.optim.Adam(params=self.model.parameters(), lr=LEARNING_RATE)
         for epoch in range(EPOCHS):
             print(f"Training epoch: {epoch + 1}")
             epoch_loss = self.train(epoch)
@@ -238,9 +237,7 @@ class Model:
                 print('free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
                 print(torch.cuda.memory_summary(device=device))
             loss.backward()
-            print('after loss')
             self.optimizer.step()
-            print('after step')
         final_loss = train_loss/train_step_count
         print(f"loss of epoch: {final_loss}")
         f1_train = f1_train/train_step_count
