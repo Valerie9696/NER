@@ -11,7 +11,7 @@ from transformers import BertTokenizer, BertConfig, BertForTokenClassification
 #https://github.com/NielsRogge/Transformers-Tutorials/blob/master/BERT/Custom_Named_Entity_Recognition_with_BERT.ipynb
 
 
-
+PYTORCH_NO_CUDA_MEMORY_CACHING = 1
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     #tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
@@ -25,4 +25,6 @@ if __name__ == '__main__':
         print('device: ', torch.cuda.current_device())
         print('START: free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
         print(torch.cuda.max_memory_allocated())
+        print('reserved', torch.cuda.memory_reserved(torch.cuda.current_device()))
+        print(torch.cuda.memory_summary())
     pt.Model()
