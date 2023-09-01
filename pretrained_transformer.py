@@ -143,7 +143,17 @@ class BertPrepper(Dataset):
 
 class Model:
     def __init__(self):
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
+            print('before train loaded: free and total memory: ',
+                  torch.cuda.mem_get_info(device=torch.cuda.current_device()))
         self.data = prep.Dataloader(train_path='train.json', test_path='test.json')
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
+            print('before train loaded: free and total memory: ',
+                  torch.cuda.mem_get_info(device=torch.cuda.current_device()))
         self.train_dataset = BertPrepper(sentences=self.data.train_sentences, tags=self.data.train_tags, unique_tags=self.data.unique_tags, tokenizer=tokenizer, max_len=128)
         self.test_dataset = BertPrepper(sentences=self.data.test_sentences, tags=self.data.test_tags, unique_tags=self.data.unique_tags, tokenizer=tokenizer, max_len=128)
         if torch.cuda.is_available():
@@ -218,15 +228,7 @@ class Model:
                 print('before_f1: free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
             f1_train = self.get_f1_score(targets=targets, logits=logits, mask=mask, training_predictions=training_predictions, training_labels=training_labels, full_f1=f1_train)
             # gradient clipping
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                #print('allocated memory: ', torch.cuda.memory_allocated(device=device))
-                print('before grad_clipping: free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
             torch.nn.utils.clip_grad_norm_(parameters=self.model.parameters(), max_norm=MAX_NORM)
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                #print('allocated memory: ', torch.cuda.memory_allocated(device=device))
-                print('before zero grad: free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
             # backward pass
             self.optimizer.zero_grad()
             gc.collect()
