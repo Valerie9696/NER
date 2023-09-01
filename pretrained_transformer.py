@@ -18,8 +18,7 @@ EPOCHS = 20
 LEARNING_RATE = 0.001#1e-05
 MAX_NORM = 10
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-#device = 'cuda' if cuda.is_available() else 'cpu'
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = 'cuda' if cuda.is_available() else 'cpu'
 print(device)
 
 train_params = {'batch_size': TRAIN_BATCH_SIZE, 'shuffle': True, 'num_workers': 3}
@@ -147,16 +146,19 @@ class Model:
         self.data = prep.Dataloader(train_path='train.json', test_path='test.json')
         self.train_dataset = BertPrepper(sentences=self.data.train_sentences, tags=self.data.train_tags, unique_tags=self.data.unique_tags, tokenizer=tokenizer, max_len=128)
         self.test_dataset = BertPrepper(sentences=self.data.test_sentences, tags=self.data.test_tags, unique_tags=self.data.unique_tags, tokenizer=tokenizer, max_len=128)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
+            print('before train loaded: free and total memory: ',
+                  torch.cuda.mem_get_info(device=torch.cuda.current_device()))
         self.train_loaded = DataLoader(self.train_dataset, **train_params)
         self.test_loaded = DataLoader(self.test_dataset, **test_params)
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
-            print('before model: free and total memory: ',
+            print('before grad_clipping: free and total memory: ',
                   torch.cuda.mem_get_info(device=torch.cuda.current_device()))
         self.model = BertForTokenClassification.from_pretrained('bert-base-uncased', num_labels=len({**self.train_dataset.id2label, **self.test_dataset.id2label}), id2label={**self.train_dataset.id2label,**self.test_dataset.id2label}, label2id={**self.train_dataset.label2id,**self.test_dataset.label2id})
-        if torch.cuda.is_available():
-            self. model = torch.nn.DataParallel(self.model, device_ids=[0, 1])
         self.model.to(device)
         self.epoch_stop = EarlyStopping(patience=5)
         self.early_stopping = EarlyStopping(patience=5)
