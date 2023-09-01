@@ -46,7 +46,7 @@ class EarlyStopping(object):
             return True
         #print(loss, self.best, self.num_bad_epochs)
         #print('is_better', self.is_better(metrics, self.best))
-        change = self.check(loss, min_delta=10)
+        change = self.check(loss, min_delta=0.1)
         if change:
             self.num_bad_epochs = 0
             self.best = loss
@@ -186,18 +186,10 @@ class Model:
         training_labels = []
         # start training
         self.model.train()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            print('training just started')
-            print(torch.cuda.memory_summary())
         for i, batch in enumerate(self.train_loaded):
             ids = batch['ids'].to(device, dtype=torch.long)
             mask = batch['mask'].to(device, dtype=torch.long)
             targets = batch['targets'].to(device, dtype=torch.long)
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                print('ids mask and targets to device')
-                print(torch.cuda.memory_summary())
             result = self.model(input_ids=ids, attention_mask=mask, labels=targets)
             loss = result.loss
             logits = result.logits
@@ -218,9 +210,9 @@ class Model:
             # backward pass
             self.optimizer.zero_grad()
             gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                print(torch.cuda.memory_summary(device=device))
+            #if torch.cuda.is_available():
+             #   torch.cuda.empty_cache()
+              #  print(torch.cuda.memory_summary(device=device))
             loss.backward()
             self.optimizer.step()
         final_loss = train_loss/train_step_count
