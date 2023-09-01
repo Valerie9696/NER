@@ -202,9 +202,21 @@ class Model:
                     print('stop mid epoch')
                     break
             # get the f1-score
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                #print('allocated memory: ', torch.cuda.memory_allocated(device=device))
+                print('before_f1: free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
             f1_train = self.get_f1_score(targets=targets, logits=logits, mask=mask, training_predictions=training_predictions, training_labels=training_labels, full_f1=f1_train)
             # gradient clipping
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                #print('allocated memory: ', torch.cuda.memory_allocated(device=device))
+                print('before grad_clipping: free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
             torch.nn.utils.clip_grad_norm_(parameters=self.model.parameters(), max_norm=MAX_NORM)
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                #print('allocated memory: ', torch.cuda.memory_allocated(device=device))
+                print('before zero grad: free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
             # backward pass
             self.optimizer.zero_grad()
             gc.collect()
