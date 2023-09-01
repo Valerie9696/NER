@@ -37,7 +37,7 @@ def lstm_builder(tuner):
     output = TimeDistributed(Dense(units=len(DATA.unique_tags), activation="softmax"))(model)
     model = Model(input, output)
     #model.summary()
-    lr = tuner.Choice("learning_rate", values=[1e-2, 1e-3, 1e-4])
+    lr = tuner.Choice("learning_rate", values=[1e-1, 1e-2, 1e-3, 1e-4])
     opt = tf.keras.optimizers.Adam(learning_rate=lr)
     model.compile(optimizer=opt, loss='categorical_crossentropy', metrics=[lb.get_f1])  #before categorical crossentropy
     # to do check accuracies
@@ -54,6 +54,8 @@ if __name__ == '__main__':
                  callbacks=[earlyStopper], epochs=EPOCHS)
     best_hps = tuner.get_best_hyperparameters(num_trials=1)
     # save the best parameters
-    with open(os.path.join('Hyperparameters','lstm_params.pkl'), 'wb+') as f:
+    if not os.path.exists('Hyperparameters'):
+        os.mkdir('Hyperparameters')
+    with open(os.path.join('Hyperparameters','lstm_params.pkl'), 'wb') as f:
         pickle.dump(best_hps, f)
         f.close()

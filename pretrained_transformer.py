@@ -20,6 +20,7 @@ MAX_NORM = 10
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 device = 'cuda' if cuda.is_available() else 'cpu'
 print(device)
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 train_params = {'batch_size': TRAIN_BATCH_SIZE, 'shuffle': True, 'num_workers': 3}
 test_params = {'batch_size': VALID_BATCH_SIZE, 'shuffle': True, 'num_workers': 3}
@@ -151,9 +152,11 @@ class Model:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
-            print('before grad_clipping: free and total memory: ',
+            print('before model: free and total memory: ',
                   torch.cuda.mem_get_info(device=torch.cuda.current_device()))
         self.model = BertForTokenClassification.from_pretrained('bert-base-uncased', num_labels=len({**self.train_dataset.id2label, **self.test_dataset.id2label}), id2label={**self.train_dataset.id2label,**self.test_dataset.id2label}, label2id={**self.train_dataset.label2id,**self.test_dataset.label2id})
+        if torch.cuda.is_available():
+            self. model = torch.nn.DataParallel(self.model, device_ids=[0, 1])
         self.model.to(device)
         self.epoch_stop = EarlyStopping(patience=5)
         self.early_stopping = EarlyStopping(patience=5)
