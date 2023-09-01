@@ -148,6 +148,11 @@ class Model:
         self.test_dataset = BertPrepper(sentences=self.data.test_sentences, tags=self.data.test_tags, unique_tags=self.data.unique_tags, tokenizer=tokenizer, max_len=128)
         self.train_loaded = DataLoader(self.train_dataset, **train_params)
         self.test_loaded = DataLoader(self.test_dataset, **test_params)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            # print('allocated memory: ', torch.cuda.memory_allocated(device=device))
+            print('before grad_clipping: free and total memory: ',
+                  torch.cuda.mem_get_info(device=torch.cuda.current_device()))
         self.model = BertForTokenClassification.from_pretrained('bert-base-uncased', num_labels=len({**self.train_dataset.id2label, **self.test_dataset.id2label}), id2label={**self.train_dataset.id2label,**self.test_dataset.id2label}, label2id={**self.train_dataset.label2id,**self.test_dataset.label2id})
         self.model.to(device)
         self.epoch_stop = EarlyStopping(patience=5)
