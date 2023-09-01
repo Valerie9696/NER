@@ -211,7 +211,7 @@ class Model:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 #print('allocated memory: ', torch.cuda.memory_allocated(device=device))
-                print('free and total memory: ', torch.cuda.mem_get_info(device=device))
+                print('free and total memory: ', torch.cuda.mem_get_info(device=torch.cuda.current_device()))
                 print(torch.cuda.memory_summary(device=device))
             loss.backward()
             print('after loss')
