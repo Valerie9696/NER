@@ -21,4 +21,4 @@ if __name__ == '__main__':
     #print(train_set[0])
     print(torch.cuda.is_available())
 
-    pt.Model()
+    pt.BertBase(filter_dataset=False)

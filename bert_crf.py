@@ -8,6 +8,9 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import BertTokenizer, BertConfig, BertForTokenClassification
 from torch import cuda
 from seqeval.metrics import classification_report
+from torch import nn
+from torchcrf import CRF
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 #https://github.com/NielsRogge/Transformers-Tutorials/blob/master/BERT/Custom_Named_Entity_Recognition_with_BERT.ipynb
@@ -44,8 +47,6 @@ class EarlyStopping(object):
             return False
         if np.isnan(loss):
             return True
-        #print(loss, self.best, self.num_bad_epochs)
-        #print('is_better', self.is_better(metrics, self.best))
         change = self.check(loss, min_delta=0.01)
         if change:
             self.num_bad_epochs = 0
@@ -70,7 +71,6 @@ class EarlyStopping(object):
         return change
 
 
-
 class BertBase:
     def __init__(self, filter_dataset=False):
         self.data = prep.Dataloader(train_path='train.json', test_path='test.json', filter_dataset=filter_dataset, bio=True)
@@ -80,6 +80,9 @@ class BertBase:
         self.test_loaded = DataLoader(self.test_dataset, **test_params)
         self.model = BertForTokenClassification.from_pretrained('bert-base-uncased', num_labels=len({**self.train_dataset.id2label, **self.test_dataset.id2label}), id2label={**self.train_dataset.id2label,**self.test_dataset.id2label}, label2id={**self.train_dataset.label2id,**self.test_dataset.label2id})
         #self.model.gradient_checkpointing_enable()
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        self.crf = CRF(num_tags=config.num_labels, batch_first=True)
         self.model.to(device)
         self.epoch_stop = EarlyStopping(patience=5)
         self.early_stopping = EarlyStopping(patience=5)

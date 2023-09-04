@@ -1,4 +1,5 @@
 import os.path
+import string
 
 import gensim
 import json
@@ -8,14 +9,17 @@ from keras.utils import to_categorical
 import keras
 import numpy as np
 from collections import Counter
+import torch
+from torch.utils.data import Dataset, DataLoader
+from transformers import BertTokenizer, BertConfig, BertForTokenClassification
 
 
 class Dataloader:
-    def __init__(self, train_path, test_path):
+    def __init__(self, train_path, test_path, filter_dataset=False, bio=False):
         self.train_data = self.load_data(train_path)
         self.test_data = self.load_data(test_path)
-        self.train_sentences, self.train_tags = self.make_tags(self.train_data)
-        self.test_sentences, self.test_tags = self.make_tags(self.test_data)
+        self.train_sentences, self.train_tags = self.make_tags(self.train_data, filter=filter_dataset, bio=bio)
+        self.test_sentences, self.test_tags = self.make_tags(self.test_data, filter=filter_dataset, bio=bio)
         self.unique_tags = set(list(self.get_unique_words(sentences=self.train_tags))+list(self.get_unique_words(self.test_tags)))
         self.lookup_table = self.make_lookup()
         self.vocabulary = self.get_vocabulary()
@@ -33,7 +37,7 @@ class Dataloader:
             words.extend(set(sentence))
         return set(words)
 
-    def make_tags(self, data):
+    def make_tags(self, data, filter=False, bio=False):
         abstracts = []
         all_tags = []
         counter = 0
@@ -47,17 +51,48 @@ class Dataloader:
                 for entity in entities:
                     sentences.append(sentence['words'])
                     if len(entity['words']) > 1:
-                        for index in range(entity['start_pos'], entity['end_pos']):
+                        indices = range(entity['start_pos'], entity['end_pos'])
+                        for index in indices:
                             if tagged[index] != 'O':
-                                print('overlap')        # todo: filter overlaps
+                                print('overlap')
                                 counter += 1
-                            tagged[index] = entity['label']
+                            if bio:
+                                if index == indices[0]:
+                                    tagged[index] = 'B-' + entity['label']
+                                else:
+                                    tagged[index] = 'I-' + entity['label']
+                            else:
+                                tagged[index] = entity['label']
                     elif len(entity['words']) == 1:
-                        tagged[entity['start_pos']] = entity['label']
+                        if bio:
+                            tagged[entity['start_pos']] = 'B-' + entity['label']
+                        else:
+                            tagged[entity['start_pos']] = entity['label']
                     tags.append(tagged)
                     tuples.append(tuple(zip(sentence['words'], tagged)))
             abstracts = abstracts + sentences
             all_tags = all_tags + tags
+            # dataset augmentation by removing punctuation and single character words
+        if filter:
+            for i in range(0, len(abstracts)):
+                sentence = abstracts[i]
+                tags = all_tags[i]
+                sentence_dupe = sentence.copy()
+                del_indices = []
+                for j in range(0, len(sentence)):
+                    word = sentence_dupe[j]
+                    # remove single character words
+                    if len(word) < 2 or word.isnumeric():
+                        del_indices.append(j)
+                    # remove words containing punctuation
+                    elif len(word) > 1:
+                        for char in word:
+                            if char in string.punctuation:
+                                del_indices.append(j)
+                for idx in sorted(del_indices, reverse=True):
+                    del sentence[idx]
+                    del tags[idx]
+
         return abstracts, all_tags
 
     def make_lookup(self):
@@ -150,5 +185,75 @@ class LSTMPrepper:
         x_train_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=x_train)
         x_test_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=x_test)
         return x_train_padded, x_test_padded, y_train_padded, y_test_padded, pad_len
+
+
+class BertPrepper(Dataset):
+    def __init__(self, sentences, tags, unique_tags, max_len):
+        self.sentences = sentences
+        self.tags = tags
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        self.max_len = max_len
+        self.len = len(sentences)
+        self.label2id = {k: v for v, k in enumerate(unique_tags)}
+        self.id2label = {v: k for v, k in enumerate(unique_tags)}
+
+    def __getitem__(self, index):
+        # step 1: tokenize (and adapt corresponding labels)
+        sentence = self.sentences[index]
+        word_labels = self.tags[index]
+        tokenized_sentence, labels = self.tokenize_and_preserve_labels(sentence=sentence, tags=word_labels)
+
+        # step 2: add special tokens (and corresponding labels)
+        tokenized_sentence = ["[CLS]"] + tokenized_sentence + ["[SEP]"]  # add special tokens
+        labels.insert(0, "O")  # add outside label for [CLS] token
+        labels.insert(-1, "O")  # add outside label for [SEP] token
+
+        # step 3: truncating/padding
+        maxlen = self.max_len
+
+        if (len(tokenized_sentence) > maxlen):
+            # truncate
+            tokenized_sentence = tokenized_sentence[:maxlen]
+            labels = labels[:maxlen]
+        else:
+            # pad
+            tokenized_sentence = tokenized_sentence + ['[PAD]' for _ in range(maxlen - len(tokenized_sentence))]
+            labels = labels + ["O" for _ in range(maxlen - len(labels))]
+
+        # step 4: obtain the attention mask
+        attn_mask = [1 if tok != '[PAD]' else 0 for tok in tokenized_sentence]
+
+        # step 5: convert tokens to input ids
+        ids = self.tokenizer.convert_tokens_to_ids(tokenized_sentence)
+
+        label_ids = [self.label2id[label] for label in labels]
+        return {
+            'ids': torch.tensor(ids, dtype=torch.long),
+            'mask': torch.tensor(attn_mask, dtype=torch.long),
+            # 'token_type_ids': torch.tensor(token_ids, dtype=torch.long),
+            'targets': torch.tensor(label_ids, dtype=torch.long)
+        }
+
+    def tokenize_and_preserve_labels(self, sentence=None, tags=None):
+        tokenized_sentence = []
+        tokenized_tags = []
+        # sentence = sentence.strip()
+        for word, tag in zip(sentence, tags):
+            # Tokenize the word and count # of subwords the word is broken into
+            tokenized = self.tokenizer.tokenize(word)
+            sub_words = len(tokenized)
+
+            # Add the tokenized word to the final tokenized word list
+            tokenized_sentence.extend(tokenized)
+
+            # Add the same label to the new list of labels `n_subwords` times
+            tokenized_tags.extend([tag] * sub_words)
+
+        return tokenized_sentence, tokenized_tags
+
+    def __len__(self):
+        return self.len
+
+
 
 #lstm_prep = LSTMPrepper()
