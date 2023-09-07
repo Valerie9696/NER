@@ -17,12 +17,12 @@ VALID_BATCH_SIZE = 2
 EPOCHS = 20
 LEARNING_RATE = 1e-05
 MAX_NORM = 10
-#tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+#tokenizer = BertTokenizer.from_pretrained('bert_model-base-uncased')
 device = 'cuda' if cuda.is_available() else 'cpu'
 print(device)
 
-train_params = {'batch_size': TRAIN_BATCH_SIZE, 'shuffle': True, 'num_workers': 15}
-test_params = {'batch_size': VALID_BATCH_SIZE, 'shuffle': True, 'num_workers': 15}
+train_params = {'batch_size': TRAIN_BATCH_SIZE, 'shuffle': True, 'num_workers': 1}
+test_params = {'batch_size': VALID_BATCH_SIZE, 'shuffle': True, 'num_workers': 1}
 
 
 class EarlyStopping(object):
@@ -78,7 +78,7 @@ class BertBase:
         self.test_dataset = prep.BertPrepper(sentences=self.data.test_sentences, tags=self.data.test_tags, unique_tags=self.data.unique_tags, max_len=128)
         self.train_loaded = DataLoader(self.train_dataset, **train_params)
         self.test_loaded = DataLoader(self.test_dataset, **test_params)
-        self.model = BertForTokenClassification.from_pretrained('bert-base-uncased', num_labels=len({**self.train_dataset.id2label, **self.test_dataset.id2label}), id2label={**self.train_dataset.id2label,**self.test_dataset.id2label}, label2id={**self.train_dataset.label2id,**self.test_dataset.label2id})
+        self.model = BertForTokenClassification.from_pretrained('bert_model-base-uncased', num_labels=len({**self.train_dataset.id2label, **self.test_dataset.id2label}), id2label={**self.train_dataset.id2label,**self.test_dataset.id2label}, label2id={**self.train_dataset.label2id,**self.test_dataset.label2id})
         #self.model.gradient_checkpointing_enable()
         self.model.to(device)
         self.epoch_stop = EarlyStopping(patience=5)
@@ -97,7 +97,7 @@ class BertBase:
 
     def get_f1_score(self, targets, logits, mask, predictions, tags, full_f1):
         flattened_targets = targets.view(-1)  # shape (batch_size * seq_len,)
-        active_logits = logits.view(-1, self.model.num_labels)  # shape (batch_size * seq_len, num_labels)
+        active_logits = logits.view(-1, self.model.tag_count).to(device)  # shape (batch_size * seq_len, tag_count)
         flattened_predictions = torch.argmax(input=active_logits, dim=1)  # prev axis = 1 shape (batch_size * seq_len,)
         # now, use mask to determine where we should compare predictions with targets (includes [CLS] and [SEP] token predictions)
         active_accuracy = mask.view(-1) == 1  # active accuracy is also of shape (batch_size * seq_len,)
@@ -145,7 +145,7 @@ class BertBase:
             gc.collect()
             #if torch.cuda.is_available():
              #   torch.cuda.empty_cache()
-              #  print(torch.cuda.memory_summary(device=device))
+              #  print(torch.cuda.memory_summary(DEVICE=DEVICE))
             loss.backward()
             self.optimizer.step()
         final_loss = train_loss/train_step_count

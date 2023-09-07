@@ -114,7 +114,6 @@ class Dataloader:
 class LSTMPrepper:
     def __init__(self):
         self.dl = Dataloader(train_path='train.json', test_path='test.json')
-        #self.x_train_padded, self.x_test_padded, self.y_train_padded, self.y_test_padded, self.max_len = self.pad(train=self.dl.train_sentences, test=self.dl.test_sentences)
         self.tokenizer, self.embedding, self.x_train_padded, self.y_train_padded, self.x_test_padded, self.y_test_padded, self.max_len = self.tokenize()
         self.y_train = keras.utils.to_categorical(self.y_train_padded)
         self.y_test = keras.utils.to_categorical(self.y_test_padded)
@@ -134,7 +133,7 @@ class LSTMPrepper:
             w2v_model.save(os.path.join('Embeddings', 'w2v.word2vec'))
         else:
             w2v_model = gensim.models.Word2Vec.load(os.path.join('Embeddings', 'w2v.word2vec'))
-        GLOVE_DIM = 181
+        GLOVE_DIM = 100 #181
         tokenizer.fit_on_texts(sentences)
         train_tokenized = tokenizer.texts_to_sequences(self.dl.train_sentences)
         test_tokenized = tokenizer.texts_to_sequences(self.dl.test_sentences)
@@ -166,32 +165,14 @@ class LSTMPrepper:
                 break
         a=0
         return tokenizer, emb_matrix, x_train_padded, y_train_padded, x_test_padded, y_test_padded, pad_len
-    def pad(self, train, test):
-        train_max = self.find_max_sublist(train)
-        test_max = self.find_max_sublist(test)
-        pad_len = max(train_max, test_max)
-        words = set(list(self.dl.get_unique_words(train)) + list(self.dl.get_unique_words(test)))
-        tags = self.dl.unique_tags
-        w_index = {w: i for i, w in enumerate(words)}
-        t_index = {t: j for j, t in enumerate(tags)}
-        x_train = [[w_index[w] for w in s] for s in self.dl.train_sentences]
-        x_test = [[w_index[w] for w in s] for s in self.dl.test_sentences]
-
-        y_train = [[t_index[w] for w in t] for t in self.dl.train_tags]
-        y_test = [[t_index[w] for w in t] for t in self.dl.test_tags]
-        y_train_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=y_train)
-        y_test_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=y_test)
-
-        x_train_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=x_train)
-        x_test_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=x_test)
-        return x_train_padded, x_test_padded, y_train_padded, y_test_padded, pad_len
 
 
 class BertPrepper(Dataset):
     def __init__(self, sentences, tags, unique_tags, max_len):
         self.sentences = sentences
         self.tags = tags
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+        #self.tokenizer = BertTokenizer.from_pretrained('dmis-lab/biobert-base-cased-v1.2')
         self.max_len = max_len
         self.len = len(sentences)
         self.label2id = {k: v for v, k in enumerate(unique_tags)}
