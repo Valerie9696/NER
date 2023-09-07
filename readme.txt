@@ -15,3 +15,6 @@ The format of the train and test data json file is as follows:
   -- start_pos/end_pos: word offsets within sentence of start/end position of entity (both inclusive)
   -- label: label(class) of entity; 
   -- words: array of strings representing named entity
+
+
+  use !python -m spacy download en_core_web_sm from the commandline in advance of running the code

@@ -12,12 +12,14 @@ from collections import Counter
 import torch
 from torch.utils.data import Dataset, DataLoader
 from transformers import BertTokenizer, BertConfig, BertForTokenClassification
+import spacy
 
 
 class Dataloader:
     def __init__(self, train_path, test_path, filter_dataset=False, bio=False):
         self.train_data = self.load_data(train_path)
         self.test_data = self.load_data(test_path)
+        self.nlp = spacy.load('en_core_web_sm')
         self.train_sentences, self.train_tags = self.make_tags(self.train_data, filter=filter_dataset, bio=bio)
         self.test_sentences, self.test_tags = self.make_tags(self.test_data, filter=filter_dataset, bio=bio)
         self.unique_tags = set(list(self.get_unique_words(sentences=self.train_tags))+list(self.get_unique_words(self.test_tags)))
@@ -26,32 +28,60 @@ class Dataloader:
         self.lookup_layer = keras.layers.StringLookup(vocabulary=self.vocabulary)
 
     def load_data(self, path):
+        """
+        Load json file from a givevn path.
+        :param path: path to the file
+        :return: content of file
+        """
         with open(path, 'rb') as f:
             data = json.load(f)
             f.close()
         return data
 
     def get_unique_words(self, sentences):
+        """
+        Find all unique words in a list of sentences in order to build up a vocabulary.
+        :param sentences: list of sentences
+        :return: unique words from those sentences
+        """
         words = []
         for sentence in sentences:
             words.extend(set(sentence))
         return set(words)
 
+    def make_pos_tags(self, sentence):
+        """
+        Generate a list of POS tags for a given sentence.
+        :param sentence: input sentence
+        :return: list of POS tags
+        """
+        joined = ' '.join(word for word in sentence)
+        spacy_sentence = self.nlp(joined)  # put sentence in the nlp pipeline of spacy
+        pos_tags = []
+        for tagged_word in spacy_sentence:  # add tag to list of pos tags for each word of the sentence
+            pos_tags.append(tagged_word.pos_)
+        #print(len(sentence), len(pos_tags))
+        return pos_tags
+
     def make_tags(self, data, filter=False, bio=False):
         abstracts = []
         all_tags = []
+        all_pos_tags = []
         counter = 0
         for abstract in data:
             sentences = []
             tags = []
             tuples = []
+            pos_tags = []
             for sentence in abstract['sentences']:
+                pos_tags.append(self.make_pos_tags(sentence['words']))
                 entities = sentence['entities']
                 tagged = ['O'] * len(sentence['words'])
                 for entity in entities:
                     sentences.append(sentence['words'])
                     if len(entity['words']) > 1:
                         indices = range(entity['start_pos'], entity['end_pos'])
+                        # print('Länge: ', entity['end_pos']-entity['start_pos'])
                         for index in indices:
                             if tagged[index] != 'O':
                                 print('overlap')
@@ -72,6 +102,7 @@ class Dataloader:
                     tuples.append(tuple(zip(sentence['words'], tagged)))
             abstracts = abstracts + sentences
             all_tags = all_tags + tags
+            all_pos_tags = all_pos_tags + pos_tags
             # dataset augmentation by removing punctuation and single character words
         if filter:
             for i in range(0, len(abstracts)):
@@ -182,7 +213,7 @@ class BertPrepper(Dataset):
         # step 1: tokenize (and adapt corresponding labels)
         sentence = self.sentences[index]
         word_labels = self.tags[index]
-        tokenized_sentence, labels = self.tokenize_and_preserve_labels(sentence=sentence, tags=word_labels)
+        tokenized_sentence, labels, pos_tags = self.tokenize_with_tag_preservation(sentence=sentence, tags=word_labels)
 
         # step 2: add special tokens (and corresponding labels)
         tokenized_sentence = ["[CLS]"] + tokenized_sentence + ["[SEP]"]  # add special tokens
@@ -215,26 +246,28 @@ class BertPrepper(Dataset):
             'targets': torch.tensor(label_ids, dtype=torch.long)
         }
 
-    def tokenize_and_preserve_labels(self, sentence=None, tags=None):
+    def tokenize_with_tag_preservation(self, sentence=None, tags=None, pos_tags=None):
+        """
+        Given a sentence and its corresponding tags, tokenize it and preserve its original tags by adding
+        the tag to each sub-word token.
+        :param sentence: the sentence that is supposed to be tokenized
+        :param tags: label tags for NER
+        :param pos_tags: POS tags generated with spacy
+        :return:
+        """
         tokenized_sentence = []
         tokenized_tags = []
-        # sentence = sentence.strip()
-        for word, tag in zip(sentence, tags):
-            # Tokenize the word and count # of subwords the word is broken into
+        tokenized_pos_tags = []
+        for word, tag, pos_tag in zip(sentence, tags, pos_tags):
             tokenized = self.tokenizer.tokenize(word)
-            sub_words = len(tokenized)
-
-            # Add the tokenized word to the final tokenized word list
+            word_token_count = len(tokenized)                           # count the sub-word tokens
             tokenized_sentence.extend(tokenized)
-
-            # Add the same label to the new list of labels `n_subwords` times
-            tokenized_tags.extend([tag] * sub_words)
-
-        return tokenized_sentence, tokenized_tags
+            tokenized_tags.extend(word_token_count * [tag])             # add label and pos tag for every token that
+            tokenized_pos_tags.extend(word_token_count * [pos_tag])     # belonged to the originally labeled word
+        return tokenized_sentence, tokenized_tags, tokenized_pos_tags
 
     def __len__(self):
         return self.len
-
 
 
 #lstm_prep = LSTMPrepper()
