@@ -18,3 +18,5 @@ The format of the train and test data json file is as follows:
 
 
   use !python -m spacy download en_core_web_sm from the commandline in advance of running the code
+
+pos, dep, stop https://web.stanford.edu/class/archive/cs/cs224n/cs224n.1194/reports/default/15791958.pdf

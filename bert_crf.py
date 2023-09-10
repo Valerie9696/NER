@@ -15,14 +15,16 @@ from transformers import BertModel, BertPreTrainedModel
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 TRAIN_BATCH_SIZE = 16
 TEST_BATCH_SIZE = 2
-EPOCHS = 30
-LEARNING_RATE = 2e-05
+EPOCHS = 3
+0
+LEARNING_RATE = 4e-05
 MAX_NORM = 10
 #tokenizer = BertTokenizer.from_pretrained('bert_model-base-uncased')
 DEVICE = 'cuda' if cuda.is_available() else 'cpu'
 
-PARAM_TRAIN = {'batch_size': TRAIN_BATCH_SIZE, 'shuffle': True, 'num_workers': 1}
-PARAM_TEST = {'batch_size': TEST_BATCH_SIZE, 'shuffle': True, 'num_workers': 1}
+PARAM_TRAIN = {'batch_size': TRAIN_BATCH_SIZE, 'shuffle': True, 'num_workers': 10}
+PARAM_TEST = {'batch_size': TEST_BATCH_SIZE, 'shuffle': True, 'num_workers': 10
+              }
 
 
 class EarlyStopping(object):
@@ -122,15 +124,17 @@ class BertBiLSTMCRF(BertPreTrainedModel):
         return loss, tags
 
 
-
 class BertCRF(BertPreTrainedModel):
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
+
     def __init__(self, config):
         super().__init__(config)
         self.tag_count = config.num_labels
         self.bert_model = BertModel(config, add_pooling_layer=False)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.linear_layer = nn.Linear(config.hidden_size, config.num_labels)
+        self.pos_emb = torch.nn.Embedding(config.hidden_size, 1)
+        self.dep_emb = torch.nn.Embedding(config.hidden_size, 1)
         self.crf = CRF(num_tags=config.num_labels, batch_first=True)
         self.init_weights()
 
@@ -146,6 +150,8 @@ class BertCRF(BertPreTrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
+        pos_tags=None,
+        dependencies=None,
     ):
         if return_dict is not None:
             return_dict = return_dict
@@ -163,7 +169,20 @@ class BertCRF(BertPreTrainedModel):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-        sequence = self.dropout(result[0])
+        sequence = result[0]
+        sequence = self.dropout(sequence)
+        # get additional feature embeddings and concatenate them with the bert contextualized embeddings
+        if pos_tags is not None:
+            pos_emb = self.pos_emb(pos_tags)
+            pos_emb = self.dropout(pos_emb)
+            sequence = torch.cat((sequence, pos_emb), dim=-1)
+        if dependencies is not None:
+            dep_emb = self.dep_emb(dependencies)
+            dep_emb = self.dropout(dep_emb)
+            sequence = torch.cat((sequence, dep_emb), dim=-1)
+
+        # Modified concatenate contextualized embeddings from BERT and your categorical embedding
+
         logits = self.linear_layer(sequence)
         log_likelihood = self.crf(logits, labels, reduction='mean')
         tags = self.crf.decode(logits)
@@ -178,8 +197,8 @@ class BertCRF(BertPreTrainedModel):
 class BertExtended:
     def __init__(self, name, filter_dataset=False):
         self.data = prep.Dataloader(train_path='train.json', test_path='test.json', filter_dataset=filter_dataset, bio=True)
-        self.train_dataset = prep.BertPrepper(sentences=self.data.train_sentences, tags=self.data.train_tags, unique_tags=self.data.unique_tags, max_len=128)
-        self.test_dataset = prep.BertPrepper(sentences=self.data.test_sentences, tags=self.data.test_tags, unique_tags=self.data.unique_tags, max_len=128)
+        self.train_dataset = prep.BertPrepper(sentences=self.data.train_sentences, tags=self.data.train_tags, pos_tags=self.data.train_pos_tags, dependencies=self.data.train_dependencies, unique_tags=self.data.unique_tags, max_len=128, all_pos=self.data.all_pos, all_deps=self.data.all_deps)
+        self.test_dataset = prep.BertPrepper(sentences=self.data.test_sentences, tags=self.data.test_tags, pos_tags=self.data.test_pos_tags, dependencies=self.data.test_dependencies, unique_tags=self.data.unique_tags, max_len=128, all_pos=self.data.all_pos, all_deps=self.data.all_deps)
         self.train_loaded = DataLoader(self.train_dataset, **PARAM_TRAIN)
         self.test_loaded = DataLoader(self.test_dataset, **PARAM_TEST)
         self.model = self.make_model(name=name)
@@ -234,7 +253,11 @@ class BertExtended:
             ids = batch['ids'].to(DEVICE, dtype=torch.long)
             mask = batch['mask'].to(DEVICE, dtype=torch.long)
             targets = batch['targets'].to(DEVICE, dtype=torch.long)
+            pos_embs = batch['pos_embs'].to(DEVICE, dtype=torch.long)
+            dep_embs = batch['dep_embs'].to(DEVICE, dtype=torch.long)
+            #pos_embs = batch[]
             result = self.model(input_ids=ids, attention_mask=mask, labels=targets)
+            #result = self.model(input_ids=ids, attention_mask=mask, labels=targets, pos_tags, dependencies)
             loss = result[0]
             logits = result[1]
 

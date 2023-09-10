@@ -20,9 +20,11 @@ class Dataloader:
         self.train_data = self.load_data(train_path)
         self.test_data = self.load_data(test_path)
         self.nlp = spacy.load('en_core_web_sm')
-        self.train_sentences, self.train_tags = self.make_tags(self.train_data, filter=filter_dataset, bio=bio)
-        self.test_sentences, self.test_tags = self.make_tags(self.test_data, filter=filter_dataset, bio=bio)
+        self.train_sentences, self.train_tags, self.train_pos_tags, self.train_dependencies = self.make_tags(self.train_data, filter=filter_dataset, bio=bio)
+        self.test_sentences, self.test_tags, self.test_pos_tags, self.test_dependencies = self.make_tags(self.test_data, filter=filter_dataset, bio=bio)
         self.unique_tags = set(list(self.get_unique_words(sentences=self.train_tags))+list(self.get_unique_words(self.test_tags)))
+        self.all_pos = self.get_unique_words(self.train_pos_tags) + self.get_unique_words(self.test_pos_tags)# + ['det'] + ['ROOT', 'compound'])
+        self.all_deps = self.get_unique_words(self.train_dependencies) + self.get_unique_words(self.test_dependencies)
         self.lookup_table = self.make_lookup()
         self.vocabulary = self.get_vocabulary()
         self.lookup_layer = keras.layers.StringLookup(vocabulary=self.vocabulary)
@@ -46,39 +48,52 @@ class Dataloader:
         """
         words = []
         for sentence in sentences:
-            words.extend(set(sentence))
-        return set(words)
+            #words.extend(np.unique(sentence))
+            for word in sentence:
+                if word not in words:
+                    words.append(word)
+        #final = np.unique(words)
 
-    def make_pos_tags(self, sentence):
+        return words#np.unique(words)
+
+    def make_pos_dep_tags(self, sentence):
         """
-        Generate a list of POS tags for a given sentence.
+        Generate a list of POS tags and dependencies for a given sentence.
         :param sentence: input sentence
-        :return: list of POS tags
+        :return: list of POS tags, list of dependencies
         """
         joined = ' '.join(word for word in sentence)
         spacy_sentence = self.nlp(joined)  # put sentence in the nlp pipeline of spacy
         pos_tags = []
+        dependencies = []
+        stop_words = []
         for tagged_word in spacy_sentence:  # add tag to list of pos tags for each word of the sentence
             pos_tags.append(tagged_word.pos_)
+            dependencies.append(tagged_word.dep_)
+            stop_words.append(tagged_word.is_stop)
         #print(len(sentence), len(pos_tags))
-        return pos_tags
+        return pos_tags, dependencies
 
     def make_tags(self, data, filter=False, bio=False):
         abstracts = []
         all_tags = []
         all_pos_tags = []
+        all_dependencies = []
         counter = 0
         for abstract in data:
             sentences = []
             tags = []
             tuples = []
             pos_tags = []
+            dependencies = []
             for sentence in abstract['sentences']:
-                pos_tags.append(self.make_pos_tags(sentence['words']))
+                pos, dep = self.make_pos_dep_tags(sentence['words'])
+                pos_tags.append(pos)
+                dependencies.append(dep)
                 entities = sentence['entities']
+                sentences.append(sentence['words'])
                 tagged = ['O'] * len(sentence['words'])
                 for entity in entities:
-                    sentences.append(sentence['words'])
                     if len(entity['words']) > 1:
                         indices = range(entity['start_pos'], entity['end_pos'])
                         # print('Länge: ', entity['end_pos']-entity['start_pos'])
@@ -98,11 +113,12 @@ class Dataloader:
                             tagged[entity['start_pos']] = 'B-' + entity['label']
                         else:
                             tagged[entity['start_pos']] = entity['label']
-                    tags.append(tagged)
-                    tuples.append(tuple(zip(sentence['words'], tagged)))
+                tags.append(tagged)
+                tuples.append(tuple(zip(sentence['words'], tagged)))
             abstracts = abstracts + sentences
             all_tags = all_tags + tags
             all_pos_tags = all_pos_tags + pos_tags
+            all_dependencies = all_dependencies + dependencies
             # dataset augmentation by removing punctuation and single character words
         if filter:
             for i in range(0, len(abstracts)):
@@ -124,13 +140,13 @@ class Dataloader:
                     del sentence[idx]
                     del tags[idx]
 
-        return abstracts, all_tags
+        return abstracts, all_tags, all_pos_tags, all_dependencies
 
     def make_lookup(self):
         unique_tags = self.get_unique_words(self.train_tags)
         table = dict(zip(range(0, len(unique_tags) + 1), unique_tags))
         return table
-    #vocab has only 3148 words, but index 3204 is tried to be looked up
+
     def get_vocabulary(self):
         train_vocab = self.get_unique_words(self.train_sentences)
         test_vocab = self.get_unique_words(self.test_sentences)
@@ -150,7 +166,6 @@ class LSTMPrepper:
         self.y_test = keras.utils.to_categorical(self.y_test_padded)
 
     def find_max_sublist(self, data):
-        max_list = max(data, key=len)
         max_len = max(map(len, data))
         return max_len
 
@@ -190,81 +205,87 @@ class LSTMPrepper:
                     emb_matrix[i] = vect
                 except:
                     pass
-                # Check if the word from the training data occurs in the GloVe word embeddings
-                # Otherwise the vector is kept with only zeros
             else:
                 break
-        a=0
         return tokenizer, emb_matrix, x_train_padded, y_train_padded, x_test_padded, y_test_padded, pad_len
 
 
 class BertPrepper(Dataset):
-    def __init__(self, sentences, tags, unique_tags, max_len):
+    def __init__(self, sentences, tags, pos_tags, dependencies, unique_tags, max_len, all_pos, all_deps):
         self.sentences = sentences
         self.tags = tags
+        self.pos_tags = pos_tags
+        self.dependencies = dependencies
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
         #self.tokenizer = BertTokenizer.from_pretrained('dmis-lab/biobert-base-cased-v1.2')
         self.max_len = max_len
         self.len = len(sentences)
         self.label2id = {k: v for v, k in enumerate(unique_tags)}
         self.id2label = {v: k for v, k in enumerate(unique_tags)}
+        nlp = spacy.load("en_core_web_sm")
+        self.pos2cat = {k: v for v,k in enumerate(all_pos)}
+        self.dep2cat = {k: v for v,k in enumerate(all_deps)}
 
-    def __getitem__(self, index):
-        # step 1: tokenize (and adapt corresponding labels)
-        sentence = self.sentences[index]
-        word_labels = self.tags[index]
-        tokenized_sentence, labels, pos_tags = self.tokenize_with_tag_preservation(sentence=sentence, tags=word_labels)
-
-        # step 2: add special tokens (and corresponding labels)
-        tokenized_sentence = ["[CLS]"] + tokenized_sentence + ["[SEP]"]  # add special tokens
-        labels.insert(0, "O")  # add outside label for [CLS] token
-        labels.insert(-1, "O")  # add outside label for [SEP] token
-
-        # step 3: truncating/padding
-        maxlen = self.max_len
-
-        if (len(tokenized_sentence) > maxlen):
-            # truncate
+    def __getitem__(self, idx):
+        sentence = self.sentences[idx]
+        word_labels = self.tags[idx]
+        pos = self.pos_tags[idx]
+        dep = self.dependencies[idx]
+        tokenized_sentence, labels, pos_tags, dependencies = self.tokenize_with_tag_preservation(sentence=sentence, tags=word_labels, pos_tags=pos, dependencies=dep)
+        tokenized_sentence = ["[CLS]"] + tokenized_sentence + ["[SEP]"]  # add special tokens for bert
+        labels.insert(0, "O")               # insert 0 for cls at the beginning of the sentence
+        labels.insert(-1, "O")              # insert 0 for sep at the end of the sentence
+        pos_tags.insert(0, "O")             # repeat this analogously for pos tags and dependencies
+        pos_tags.insert(-1, "O")
+        dependencies.insert(0, "O")
+        dependencies.insert(-1, "O")
+        maxlen = self.max_len   # pad everything to the longest sentence in the dataset
+        # in case somehow there is still a sentence longer than max_len, truncate it
+        if len(tokenized_sentence) > maxlen:
             tokenized_sentence = tokenized_sentence[:maxlen]
             labels = labels[:maxlen]
-        else:
-            # pad
+            pos_tags = pos_tags[:maxlen]
+            dependencies = dependencies[:maxlen]
+        else:   # pad to max_len
             tokenized_sentence = tokenized_sentence + ['[PAD]' for _ in range(maxlen - len(tokenized_sentence))]
             labels = labels + ["O" for _ in range(maxlen - len(labels))]
-
-        # step 4: obtain the attention mask
-        attn_mask = [1 if tok != '[PAD]' else 0 for tok in tokenized_sentence]
-
-        # step 5: convert tokens to input ids
-        ids = self.tokenizer.convert_tokens_to_ids(tokenized_sentence)
-
+            pos_tags = pos_tags + ["O" for _ in range(maxlen - len(pos_tags))]
+            dependencies = dependencies + ["O" for _ in range(maxlen - len(dependencies))]
+        attention_mask = [1 if tok != '[PAD]' else 0 for tok in tokenized_sentence]  # create attention mask, ignore paddings
+        ids = self.tokenizer.convert_tokens_to_ids(tokenized_sentence)      # tokens to ids
         label_ids = [self.label2id[label] for label in labels]
+        pos_ids = [22 if pos == 'O' else self.pos2cat[pos] for pos in pos_tags]
+        dep_ids = [46 if dep == 'O' else self.dep2cat[dep] for dep in dependencies]
         return {
             'ids': torch.tensor(ids, dtype=torch.long),
-            'mask': torch.tensor(attn_mask, dtype=torch.long),
-            # 'token_type_ids': torch.tensor(token_ids, dtype=torch.long),
-            'targets': torch.tensor(label_ids, dtype=torch.long)
+            'mask': torch.tensor(attention_mask, dtype=torch.long),
+            'targets': torch.tensor(label_ids, dtype=torch.long),
+            'pos_embs': torch.tensor(pos_ids, dtype=torch.long),
+            'dep_embs': torch.tensor(dep_ids, dtype=torch.long)
         }
 
-    def tokenize_with_tag_preservation(self, sentence=None, tags=None, pos_tags=None):
+    def tokenize_with_tag_preservation(self, sentence, tags, pos_tags, dependencies):
         """
         Given a sentence and its corresponding tags, tokenize it and preserve its original tags by adding
         the tag to each sub-word token.
         :param sentence: the sentence that is supposed to be tokenized
         :param tags: label tags for NER
         :param pos_tags: POS tags generated with spacy
-        :return:
+        :param dependencies: Dependencies generated with spacy
+        :return: tokenized version of the aforementioned parameters which fits the amount of sub-word tokens
         """
         tokenized_sentence = []
         tokenized_tags = []
         tokenized_pos_tags = []
-        for word, tag, pos_tag in zip(sentence, tags, pos_tags):
+        tokenized_dependencies = []
+        for word, tag, pos_tag, dep in zip(sentence, tags, pos_tags, dependencies):
             tokenized = self.tokenizer.tokenize(word)
             word_token_count = len(tokenized)                           # count the sub-word tokens
             tokenized_sentence.extend(tokenized)
             tokenized_tags.extend(word_token_count * [tag])             # add label and pos tag for every token that
             tokenized_pos_tags.extend(word_token_count * [pos_tag])     # belonged to the originally labeled word
-        return tokenized_sentence, tokenized_tags, tokenized_pos_tags
+            tokenized_dependencies.extend(word_token_count*[dep])
+        return tokenized_sentence, tokenized_tags, tokenized_pos_tags, tokenized_dependencies
 
     def __len__(self):
         return self.len
