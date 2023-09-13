@@ -17,21 +17,23 @@ import spacy
 
 class Dataloader:
     def __init__(self, train_path, test_path, filter_dataset=False, bio=False):
-        self.train_data = self.load_data(train_path)
+        self.train_data, self.validation_data = self.split_train_valid(self.load_data(train_path))
         self.test_data = self.load_data(test_path)
         self.nlp = spacy.load('en_core_web_sm')
         self.train_sentences, self.train_tags, self.train_pos_tags, self.train_dependencies = self.make_tags(self.train_data, filter=filter_dataset, bio=bio)
+        self.valid_sentences, self.valid_tags, self.valid_pos_tags, self.valid_dependencies = self.make_tags(self.validation_data, filter=filter_dataset, bio=bio)
         self.test_sentences, self.test_tags, self.test_pos_tags, self.test_dependencies = self.make_tags(self.test_data, filter=filter_dataset, bio=bio)
-        self.unique_tags = set(list(self.get_unique_words(sentences=self.train_tags))+list(self.get_unique_words(self.test_tags)))
-        self.all_pos = self.get_unique_words(self.train_pos_tags) + self.get_unique_words(self.test_pos_tags)# + ['det'] + ['ROOT', 'compound'])
-        self.all_deps = self.get_unique_words(self.train_dependencies) + self.get_unique_words(self.test_dependencies)
+        self.unique_tags = set(list(self.get_unique_words(sentences=self.train_tags))+list(self.get_unique_words(self.valid_tags))+list(self.get_unique_words(self.test_tags)))
+        self.all_pos = self.get_unique_words(self.train_pos_tags) + self.get_unique_words(self.valid_pos_tags) + self.get_unique_words(self.test_pos_tags)# + ['det'] + ['ROOT', 'compound'])
+        self.all_deps = self.get_unique_words(self.train_dependencies) + self.get_unique_words(self.valid_dependencies) + self.get_unique_words(self.test_dependencies)
         self.lookup_table = self.make_lookup()
         self.vocabulary = self.get_vocabulary()
         self.lookup_layer = keras.layers.StringLookup(vocabulary=self.vocabulary)
 
+
     def load_data(self, path):
         """
-        Load json file from a givevn path.
+        Load json file from a given path.
         :param path: path to the file
         :return: content of file
         """
@@ -121,36 +123,53 @@ class Dataloader:
             all_dependencies = all_dependencies + dependencies
             # dataset augmentation by removing punctuation and single character words
         if filter:
+            f_abstracts, f_all_tags, f_all_pos, f_all_dep = [], [], [], []
             for i in range(0, len(abstracts)):
                 sentence = abstracts[i]
                 tags = all_tags[i]
-                sentence_dupe = sentence.copy()
+                pos = all_pos_tags[i]
+                dep = all_dependencies[i]
                 del_indices = []
+                #### check first if the tag is an entity only delete if not
                 for j in range(0, len(sentence)):
-                    word = sentence_dupe[j]
+                    word = sentence[j]
+                    tag = tags[j]
                     # remove single character words
-                    if len(word) < 2 or word.isnumeric():
-                        del_indices.append(j)
-                    # remove words containing punctuation
-                    elif len(word) > 1:
-                        for char in word:
-                            if char in string.punctuation:
-                                del_indices.append(j)
-                for idx in sorted(del_indices, reverse=True):
-                    del sentence[idx]
-                    del tags[idx]
+                    if tag == 'O':
+                        if len(word) < 2 or word.isnumeric():
+                            del_indices.append(j)
+                        # remove words containing punctuation
+                        elif len(word) > 1:
+                            for char in word:
+                                if char in string.punctuation or char.isnumeric():
+                                    del_indices.append(j)
+                filtered_sentence = [sentence[i] for i in range(0, len(sentence)) if i not in del_indices]
+                filtered_tags = [tags[i] for i in range(0, len(sentence)) if i not in del_indices]
+                filtered_pos = [pos[i] for i in range(0, len(sentence)) if i not in del_indices]
+                filtered_dep = [dep[i] for i in range(0, len(sentence)) if i not in del_indices]
+                f_abstracts.append(filtered_sentence)
+                f_all_tags.append(filtered_tags)
+                f_all_pos.append(filtered_pos)
+                f_all_dep.append(filtered_dep)
+            return f_abstracts, f_all_tags, f_all_pos, f_all_dep
 
         return abstracts, all_tags, all_pos_tags, all_dependencies
 
+    def split_train_valid(self, data):
+        valid_count = int(0.2*len(data))
+        train = data[0:len(data)-valid_count]
+        valid = data[len(data)-valid_count:]
+        return train, valid
+
     def make_lookup(self):
-        unique_tags = self.get_unique_words(self.train_tags)
-        table = dict(zip(range(0, len(unique_tags) + 1), unique_tags))
+        table = dict(zip(range(0, len(self.unique_tags) + 1), self.unique_tags))
         return table
 
     def get_vocabulary(self):
         train_vocab = self.get_unique_words(self.train_sentences)
+        valid_vocab = self.get_unique_words(self.valid_sentences)
         test_vocab = self.get_unique_words(self.test_sentences)
-        vocab = set(list(train_vocab) + list(test_vocab))
+        vocab = set(list(train_vocab) + list(test_vocab) + list(valid_vocab))
         table_arr = np.array(list(map(str.lower, vocab)))
         counter = Counter(table_arr)
         vocab_size = len(counter)
@@ -216,7 +235,7 @@ class BertPrepper(Dataset):
         self.tags = tags
         self.pos_tags = pos_tags
         self.dependencies = dependencies
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
         #self.tokenizer = BertTokenizer.from_pretrained('dmis-lab/biobert-base-cased-v1.2')
         self.max_len = max_len
         self.len = len(sentences)

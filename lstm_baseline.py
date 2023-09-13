@@ -93,9 +93,7 @@ class LSTM_Base:
         result = self.model.predict(self.prepper.x_test_padded)
         all_tags = tf.argmax(result, axis=-1)
         for tags in all_tags:
-            t = eval(tags[0]) #tf.cast(tags[0], tf.int32)
+            t = eval(tags[0])
             labels = [self.prepper.dl.lookup_table[eval(tag)] for tag in tags]
-            #print(tags)
-            #print(labels)
         print(labels)
 #lstm_base = LSTM_Base(run_training=True)
