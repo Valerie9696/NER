@@ -8,62 +8,21 @@ import preproccessing as prep
 from torch.utils.data import Dataset, DataLoader
 from transformers import BertTokenizer, BertConfig, BertForTokenClassification
 from seqeval.metrics import classification_report
+from sklearn.metrics import f1_score as f1_score, accuracy_score
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 device = 'cuda' if cuda.is_available() else 'cpu'
 #https://github.com/NielsRogge/Transformers-Tutorials/blob/master/BERT/Custom_Named_Entity_Recognition_with_BERT.ipynb
 
-TRAIN_BATCH_SIZE = 16
-VALID_BATCH_SIZE = 16
+TRAIN_BATCH_SIZE = 8
+VALID_BATCH_SIZE = 8
+TEST_BATCH_SIZE = 64
 EPOCHS = 4
 LEARNING_RATE = 3e-05
 MAX_NORM = 10
-NUM_WORKERS = 1
-TRAIN_PARAMS = {'batch_size': TRAIN_BATCH_SIZE, 'shuffle': True, 'num_workers': NUM_WORKERS}
-VALID_PARAMS = {'batch_size': VALID_BATCH_SIZE, 'shuffle': True, 'num_workers': NUM_WORKERS}
-TEST_PARAMS = {'batch_size': VALID_BATCH_SIZE, 'shuffle': True, 'num_workers': NUM_WORKERS}
-
-
-class EarlyStopping(object):
-    def __init__(self, mode='min', min_delta=0, patience=5):
-        self.mode = mode
-        self.min_delta = min_delta
-        self.patience = patience
-        self.best = None
-        self.num_bad_epochs = 0
-        self.is_better = None
-
-        if patience == 0:
-            self.is_better = True
-            self.step = lambda a: False
-
-    def step(self, loss):
-        if self.best is None:
-            self.best = loss
-            return False
-        if np.isnan(loss):
-            return True
-        change = self.check(loss, min_delta=0.01)
-        if change:
-            self.num_bad_epochs = 0
-            self.best = loss
-        else:
-            self.num_bad_epochs += 1
-        print('count of bad epochs', self.num_bad_epochs)
-        if self.num_bad_epochs >= self.patience:
-            a=0
-            #print('terminating because of early stopping!')
-            #return True
-        return False
-
-    def check(self, loss, min_delta):
-        change = False
-        if (self.best - loss) > min_delta:
-            self.is_better = True
-            change = True
-        else:
-            self.is_better = False
-            change = False
-        return change
+NUM_WORKERS = 8
+TRAIN_PARAMS = {'batch_size': TRAIN_BATCH_SIZE, 'shuffle': False, 'num_workers': NUM_WORKERS}
+VALID_PARAMS = {'batch_size': VALID_BATCH_SIZE, 'shuffle': False, 'num_workers': NUM_WORKERS}
+TEST_PARAMS = {'batch_size': TEST_BATCH_SIZE, 'shuffle': False, 'num_workers': NUM_WORKERS}
 
 
 class BertBase:
@@ -88,44 +47,43 @@ class BertBase:
         self.test_loaded = DataLoader(self.test_dataset, **TEST_PARAMS)
         self.model = BertForTokenClassification.from_pretrained('bert-base-uncased', num_labels=len({**self.train_dataset.id2label, **self.test_dataset.id2label}), id2label={**self.train_dataset.id2label,**self.test_dataset.id2label}, label2id={**self.train_dataset.label2id,**self.test_dataset.label2id})
         self.model.to(device)
-        self.epoch_stop = EarlyStopping(patience=5)
-        self.early_stopping = EarlyStopping(patience=5)
         self.optimizer = torch.optim.Adam(params=self.model.parameters(), lr=LEARNING_RATE)
         for epoch in range(EPOCHS):
-            print(f"Training epoch: {epoch + 1}")
+            print('Training of epoch: ', epoch + 1)
             epoch_loss = self.train(epoch)
-            if self.epoch_stop.step(epoch_loss):
-                print('tis enough')
-                #break
         self.validate()
         self.final_f1 = self.test()
         if not os.path.exists('models'):
             os.mkdir('models')
         self.model.save_pretrained(os.path.join('models', 'bert_pretrained.h5'))
 
-    def get_f1_score(self, targets, logits, mask, predictions, tags, full_f1):
+    def get_metric(self, targets, logits, mask, predictions, tags, full_val, metric='accuracy'):
         flattened_targets = targets.view(-1)  # shape (batch_size * seq_len,)
         active_logits = logits.view(-1, self.model.num_labels)  # shape (batch_size * seq_len, num_labels)        # shape (batch_size * seq_len, tag_count)
         flattened_predictions = torch.argmax(input=active_logits, dim=1)  # prev axis = 1 shape (batch_size * seq_len,)
-        # now, use mask to determine where we should compare predictions with targets (includes [CLS] and [SEP] token predictions)
         active_accuracy = mask.view(-1) == 1  # active accuracy is also of shape (batch_size * seq_len,)
         targets = torch.masked_select(flattened_targets, active_accuracy)
         preds = torch.masked_select(flattened_predictions, active_accuracy)
         predictions.extend(preds)
         tags.extend(targets)
-        cur_f1 = f1_score(targets.cpu().numpy(), preds.cpu().numpy(), average='micro')
-        full_f1 += cur_f1
-        return full_f1, predictions, tags
+        val = 0
+        if metric == 'accuracy':
+            val = accuracy_score(targets.cpu().numpy(), preds.cpu().numpy())
+        elif metric == 'micro_f1':
+            val = f1_score(targets.cpu().numpy(), preds.cpu().numpy(), average='micro')
+        elif metric == 'macro_f1':
+            val = f1_score(targets.cpu().numpy(), preds.cpu().numpy(), average='macro')
+        full_val += val
+        return full_val, predictions, tags
 
     def train(self, epoch):
-        # init variables
+        # Initialize
         train_loss = 0
-        f1_train = 0
-        train_step_count = 0
+        acc_train = 0
+        train_steps = 0
         predictions = []
         tags = []
-        # start training
-        self.model.train()
+        self.model.train()                                  # actual start of the training
         for i, batch in enumerate(self.train_loaded):
             ids = batch['ids'].to(device, dtype=torch.long)
             mask = batch['mask'].to(device, dtype=torch.long)
@@ -134,17 +92,14 @@ class BertBase:
             loss = out.loss
             logits = out.logits
             train_loss += loss.item()
-            train_step_count += 1
+            train_steps += 1
             if i % 100 == 0:
-                loss_step = train_loss/train_step_count
+                loss_step = train_loss/train_steps
                 print('Training: Loss per 100 steps: ', loss_step)
-                if self.early_stopping.step(loss_step):
-                    print('stop mid epoch')
-                    break
             # get the f1-score
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            f1_train, predictions, tags = self.get_f1_score(targets=targets, logits=logits, mask=mask, predictions=predictions, tags=tags, full_f1=f1_train)
+            acc_train, predictions, tags = self.get_metric(targets=targets, logits=logits, mask=mask, predictions=predictions, tags=tags, full_val=acc_train, metric='accuracy')
             # gradient clipping
             torch.nn.utils.clip_grad_norm_(parameters=self.model.parameters(), max_norm=MAX_NORM)
             # backward pass
@@ -152,17 +107,17 @@ class BertBase:
             gc.collect()
             loss.backward()
             self.optimizer.step()
-        final_loss = train_loss/train_step_count
-        print(f"loss of epoch: {final_loss}")
-        f1_train = f1_train/train_step_count
-        print(f"f1-score of epoch: {f1_train}")
+        final_loss = train_loss/train_steps
+        print('Loss of epoch: ', final_loss)
+        full_acc = acc_train/train_steps
+        print('Accuracy of epoch: ', full_acc)
         return final_loss
 
     def validate(self):
         self.model.eval()
         eval_loss = 0
-        f1_val = 0
-        nb_eval_steps = 0
+        acc_val = 0
+        val_steps = 0
         val_preds, val_tags = [], []
         with torch.no_grad():
             for idx, batch in enumerate(self.valid_loaded):
@@ -173,24 +128,24 @@ class BertBase:
                 loss = out.loss
                 eval_logits = out.logits
                 eval_loss += loss.item()
-                nb_eval_steps += 1
+                val_steps += 1
                 if idx % 100 == 0:
-                    loss_step = eval_loss / nb_eval_steps
+                    loss_step = eval_loss / val_steps
                     print('Validation: Loss per 100 steps: ', loss_step)
 
-                f1_val, val_preds, val_tags = self.get_f1_score(targets=targets, logits=eval_logits, mask=mask, predictions=val_preds, tags=val_tags, full_f1=f1_val)
-        id2label_combined = {**self.train_dataset.id2label, **self.valid_dataset.id2label, **self.test_dataset.id2label}
+                acc_val, val_preds, val_tags = self.get_metric(targets=targets, logits=eval_logits, mask=mask, predictions=val_preds, tags=val_tags, full_val=acc_val, metric='accuracy')
+        id2label_combined = self.train_dataset.id2label
         tags = [id2label_combined[id.item()] for id in val_tags]
         predictions = [id2label_combined[id.item()] for id in val_preds]
-        eval_loss = eval_loss / nb_eval_steps
-        final_f1 = f1_val / nb_eval_steps
+        eval_loss = eval_loss / val_steps
+        final_acc = acc_val / val_steps
         print('Validation Loss: ', eval_loss)
-        print('Validation F1-score: ', final_f1)
-        print(classification_report([tags], [predictions]))
+        print('Validation Accuracy: ', final_acc)
 
-        return final_f1
+        return final_acc
 
     def test(self):
+        self.model.eval()
         f1_test = 0
         samples = 0
         test_preds = []
@@ -207,12 +162,13 @@ class BertBase:
             #tokens = self.test_dataset.tokenizer.convert_ids_to_tokens(ids.squeeze().tolist())
             token_predictions = [self.test_dataset.id2label[i] for i in flattened_predictions.cpu().numpy()]
             #wp_preds = list(zip(tokens, token_predictions))  # list of tuples. Each tuple = (wordpiece, prediction)
-            f1_test, test_preds, test_tags = self.get_f1_score(targets=targets, logits=logits, mask=mask,
-                                                            predictions=test_preds, tags=test_tags, full_f1=f1_test)
+            f1_test, test_preds, test_tags = self.get_metric(targets=targets, logits=logits, mask=mask,
+                                                            predictions=test_preds, tags=test_tags, full_val=f1_test, metric='micro_f1')
             word_level_predictions = []
             #for pair in wp_preds:
              #   if (pair[0].startswith(" ##")) or (pair[0] in ['[CLS]', '[SEP]', '[PAD]']):
-                    # skip prediction
+                    # skip p
+            # rediction
               #      continue
                # else:
                 #    word_level_predictions.append(pair[1])
@@ -222,6 +178,14 @@ class BertBase:
             #str_rep = " ".join([t[0] for t in wp_preds if t[0] not in ['[CLS]', '[SEP]', '[PAD]']]).replace(" ##", "")
             #print(str_rep)
             #print(word_level_predictions)
-        final_f1 = f1_test / samples
+        id2label_combined = self.train_dataset.id2label  # {**self.train_dataset.id2label, **self.valid_dataset.id2label, **self.test_dataset.id2label}
+        tags = [id2label_combined[id.item()] for id in test_tags]
+        predictions = [id2label_combined[id.item()] for id in test_preds]
+        final_f1 = f1_score(y_true=tags, y_pred=predictions, average='micro')
+        final_macro_f1 = f1_score(y_true=tags, y_pred=predictions, average='macro')
+        final_acc = accuracy_score(y_true=tags, y_pred=predictions)
         print(final_f1)
+        print(final_macro_f1)
+        print(final_acc)
+        print(classification_report([tags], [predictions]))
         return final_f1

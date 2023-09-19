@@ -16,10 +16,10 @@ if __name__ == '__main__':
         if model == 'LSTM':
             lstm_base = lb.LSTM_Base(run_training=True)
         elif model == 'Bert':
-            bert_base = pt.BertBase(filter_dataset=True)
+            bert_base = pt.BertBase(filter_dataset=False)
             f1 = f1 + bert_base.final_f1
         elif model == 'BertCrf':
-            bert_crf = bc.BertExtended(name='bert_crf', filter_dataset=True, with_features=True)
+            bert_crf = bc.BertExtended(name='bert_crf', filter_dataset=False, with_features=False)
             f1 = f1 + bert_crf.final_f1
         elif model == 'BertLSTMCrf':
             bc.BertExtended(name='bert_lstm_crf', filter_dataset=False)

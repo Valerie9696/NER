@@ -23,7 +23,7 @@ class Dataloader:
         self.train_sentences, self.train_tags, self.train_pos_tags, self.train_dependencies = self.make_tags(self.train_data, filter=filter_dataset, bio=bio)
         self.valid_sentences, self.valid_tags, self.valid_pos_tags, self.valid_dependencies = self.make_tags(self.validation_data, filter=filter_dataset, bio=bio)
         self.test_sentences, self.test_tags, self.test_pos_tags, self.test_dependencies = self.make_tags(self.test_data, filter=filter_dataset, bio=bio)
-        self.unique_tags = set(list(self.get_unique_words(sentences=self.train_tags))+list(self.get_unique_words(self.valid_tags))+list(self.get_unique_words(self.test_tags)))
+        self.unique_tags = self.get_unique_words([self.get_unique_words(sentences=self.train_tags)+self.get_unique_words(self.valid_tags)+self.get_unique_words(self.test_tags)])
         self.all_pos = self.get_unique_words(self.train_pos_tags) + self.get_unique_words(self.valid_pos_tags) + self.get_unique_words(self.test_pos_tags)# + ['det'] + ['ROOT', 'compound'])
         self.all_deps = self.get_unique_words(self.train_dependencies) + self.get_unique_words(self.valid_dependencies) + self.get_unique_words(self.test_dependencies)
         self.lookup_table = self.make_lookup()
@@ -169,9 +169,9 @@ class Dataloader:
         train_vocab = self.get_unique_words(self.train_sentences)
         valid_vocab = self.get_unique_words(self.valid_sentences)
         test_vocab = self.get_unique_words(self.test_sentences)
-        vocab = set(list(train_vocab) + list(test_vocab) + list(valid_vocab))
-        table_arr = np.array(list(map(str.lower, vocab)))
-        counter = Counter(table_arr)
+        vocab = self.get_unique_words([train_vocab + test_vocab + valid_vocab])
+        #table_arr = np.array(list(map(str.lower, vocab)))
+        counter = Counter(vocab)
         vocab_size = len(counter)
         vocabulary = [token for token, count in counter.most_common(vocab_size)]
         return vocabulary
@@ -181,8 +181,10 @@ class LSTMPrepper:
     def __init__(self):
         self.dl = Dataloader(train_path='train.json', test_path='test.json')
         self.tokenizer, self.embedding, self.x_train_padded, self.y_train_padded, self.x_test_padded, self.y_test_padded, self.max_len = self.tokenize()
-        self.y_train = keras.utils.to_categorical(self.y_train_padded)
-        self.y_test = keras.utils.to_categorical(self.y_test_padded)
+        #self.x_train_padded, self.x_test_padded, self.y_train_padded, self.y_test_padded, self.max_len = self.pad(train=self.dl.train_sentences, test=self.dl.test_sentences)
+        self.y_train = keras.utils.to_categorical(self.y_train_padded, num_classes=len(self.dl.unique_tags))
+        self.y_test = keras.utils.to_categorical(self.y_test_padded, num_classes=len(self.dl.unique_tags))
+        a=0
 
     def find_max_sublist(self, data):
         max_len = max(map(len, data))
@@ -227,6 +229,25 @@ class LSTMPrepper:
             else:
                 break
         return tokenizer, emb_matrix, x_train_padded, y_train_padded, x_test_padded, y_test_padded, pad_len
+    def pad(self, train, test):
+        train_max = self.find_max_sublist(train)
+        test_max = self.find_max_sublist(test)
+        pad_len = max(train_max, test_max)
+        words = self.dl.vocabulary
+        tags = self.dl.unique_tags
+        w_index = {w: i for i, w in enumerate(words)}
+        t_index = {t: j for j, t in enumerate(tags)}
+        x_train = [[w_index[w] for w in s] for s in self.dl.train_sentences]
+        x_test = [[w_index[w] for w in s] for s in self.dl.test_sentences]
+
+        y_train = [[t_index[w] for w in t] for t in self.dl.train_tags]
+        y_test = [[t_index[w] for w in t] for t in self.dl.test_tags]
+        y_train_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=y_train)
+        y_test_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=y_test)
+
+        x_train_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=x_train)
+        x_test_padded = pad_sequences(maxlen=pad_len, padding='post', sequences=x_test)
+        return x_train_padded, x_test_padded, y_train_padded, y_test_padded, pad_len
 
 
 class BertPrepper(Dataset):

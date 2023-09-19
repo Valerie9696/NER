@@ -20,7 +20,7 @@ import preproccessing as prep
 import lstm_baseline as lb
 
 EPOCHS = 15
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 EARLY_STOPPING_PATIENCE = 5 #if the accuracy does not increase after this many epochs -> break and continue with next
 BN_AXIS= -1 #axis=-1 implies channel last ordering[rows][cols][channels].
 
@@ -28,7 +28,6 @@ BN_AXIS= -1 #axis=-1 implies channel last ordering[rows][cols][channels].
 def lstm_builder(tuner):
     input = Input(shape=(INP_SHAPE))
     model = Embedding(input_dim=3461, output_dim=INP_SHAPE, input_length=140)(input)
-    model = SpatialDropout1D(tuner.Float("spatial_drop", min_value=0, max_value=0.25, step=0.05))(model)
     model = Bidirectional(LSTM(units=tuner.Int("lstm_units", min_value=32, max_value=240, step=16), return_sequences=True, recurrent_dropout=tuner.Float("rec_drop", min_value=0.05, max_value=0.3, step=0.05)))(model)
     output = TimeDistributed(Dense(units=len(DATA.unique_tags), activation="softmax"))(model)
     model = Model(input, output)
