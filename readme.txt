@@ -1,3 +1,5 @@
+To view the results produced by this project, please view Report.pdf.
+
 The format of the train and test data json file is as follows:
 
 - the top level object is an array of abstract objects
